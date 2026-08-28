@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root{
     --bg: #08090b;
@@ -112,9 +113,11 @@
   .btn-block{width:100%;margin-top:6px;}
   .btn-sm{padding:8px 13px;font-size:12.5px;}
 
-  .login-btn-row{margin-top:20px;}
+  .login-btn-row{margin-top:20px;display:flex;flex-direction:column;gap:8px;}
   .login-err{color:var(--danger);font-size:12.5px;text-align:center;margin-top:12px;min-height:16px;}
   .login-hint{margin-top:22px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-muted);text-align:center;line-height:1.6;}
+
+  .company-active-chip{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:600;color:var(--accent);text-align:center;margin-bottom:18px;padding:9px 12px;background:var(--accent-soft);border:1px solid rgba(240,169,59,.25);border-radius:var(--radius-sm);}
 
   /* ================= APP SHELL / WINDOW ================= */
   #appShell{position:relative;z-index:1;height:100vh;height:100dvh;width:100vw;display:flex;align-items:stretch;justify-content:stretch;padding:0;}
@@ -148,6 +151,12 @@
   #appShell.return-active .return-mode-btn{background:var(--danger);color:#fff;border-color:var(--danger);}
   #appShell.return-active #burgerBtn,
   #appShell.return-active #returnModeBtn{display:none;}
+
+  /* Terminal (skaner) rolunda satışa aid burger menyu, axtarış/barkod paneli,
+     yeniləmə düyməsi və rejim paneli hər zaman gizli qalsın (CSS-lə təminat) */
+  #appShell.role-terminal #burgerBtn,
+  #appShell.role-terminal #salesToolbar,
+  #appShell.role-terminal #saleModeBar{display:none !important;}
 
   /* Rejim aktivkən burger menyudan naviqasiya bağlanır */
   .sidebar.return-mode .nav-item[data-nav],
@@ -231,11 +240,87 @@
   .search-box input, .barcode-box input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px 10px 36px;font-size:13.5px;transition:border-color .15s,box-shadow .15s;}
   .barcode-box input{font-family:var(--font-mono);}
   .search-box input:focus, .barcode-box input:focus{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
-  .barcode-box{max-width:220px;}
+  .barcode-box{max-width:252px;}
+  .barcode-box input{padding-right:34px;}
+  .barcode-cam-btn{position:absolute;right:6px;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);background:transparent;}
+  .pbarcode-wrap{position:relative;display:flex;align-items:center;}
+  .pbarcode-wrap input{padding-right:36px;}
+  .pbarcode-wrap .barcode-cam-btn{color:var(--text-secondary);}
+  .pbarcode-wrap .barcode-cam-btn:hover{color:var(--accent);}
+  .pbarcode-wrap .barcode-cam-btn svg{width:16px;height:16px;}
+  .barcode-cam-btn:hover{color:var(--accent);background:var(--accent-soft);}
+  .barcode-cam-btn svg{width:15px;height:15px;}
+
+  .barcode-scan-box{width:100%;min-height:260px;border-radius:12px;overflow:hidden;background:#000;position:relative;}
+  .barcode-scan-box video{width:100% !important;height:auto !important;}
+  .barcode-scan-hint{margin-top:10px;font-size:12px;color:var(--text-secondary);text-align:center;}
+
+  /* Barkod skaner modalını telefonda daha böyük və rahat oxunan et */
+  #barcodeScanModal{max-width:460px;}
+  #barcodeScanModal .barcode-scan-box{min-height:320px;}
+  @media (max-width:520px){
+    #barcodeScanModal{width:96vw;max-width:96vw;}
+    #barcodeScanModal .modal-body{padding:14px;}
+    #barcodeScanModal .barcode-scan-box{min-height:min(62vh,420px);}
+  }
+
+  .os-date-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);padding:16px 4px 8px;}
+  .os-date-heading:first-child{padding-top:0;}
   .refresh-btn{flex:0 0 auto;width:38px;height:38px;border-radius:var(--radius-sm);background:var(--bg-panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-secondary);}
   .refresh-btn:hover{color:var(--accent);border-color:var(--accent-dim);}
   .refresh-btn svg{width:16px;height:16px;}
   .refresh-btn.loading svg{animation:spin 1s linear infinite;}
+
+  /* ===== SATIŞ REJİMİ (Lokal / Kassa-Terminal) ===== */
+  .sale-mode-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 18px;border-bottom:1px solid var(--border-soft);background:var(--bg-panel);}
+  .sm-switch{display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:20px;padding:3px;flex:0 0 auto;}
+  .sm-switch button{padding:7px 14px;border-radius:16px;font-size:12.5px;font-weight:600;color:var(--text-secondary);transition:background .15s,color .15s;white-space:nowrap;}
+  .sm-switch button.active{background:var(--accent);color:#1a1206;}
+  .sm-role-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .sm-room-input{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:12.5px;font-family:var(--font-mono);width:120px;}
+  .sm-role-btn{padding:8px 13px;border-radius:var(--radius-sm);font-size:12.5px;font-weight:600;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-secondary);}
+  .sm-role-btn:hover{border-color:var(--accent-dim);color:var(--text-primary);}
+  .sm-role-btn.active{background:var(--accent-soft);border-color:var(--accent-dim);color:var(--accent);}
+  .sm-status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-secondary);padding:6px 11px;border-radius:20px;background:var(--bg-panel-2);border:1px solid var(--border);}
+  .sm-status .dot{width:7px;height:7px;border-radius:50%;background:var(--text-muted);flex:0 0 auto;}
+  .sm-status.online .dot{background:var(--success);box-shadow:0 0 6px var(--success);}
+  .sm-status.waiting .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse-dot 1.2s infinite;}
+  @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .sm-leave-btn{margin-left:auto;font-size:12px;font-weight:600;color:var(--danger);padding:6px 10px;border-radius:8px;}
+  .sm-leave-btn:hover{background:var(--danger-soft);}
+
+  /* Terminal (skaner) tam-ekran görünüşü */
+  .terminal-view{flex:1;display:none;flex-direction:column;align-items:stretch;gap:14px;padding:16px 16px 28px;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;}
+  .terminal-view.active{display:flex;}
+  .term-topbar{flex:0 0 auto;display:flex;justify-content:center;}
+  .term-exit-btn{display:inline-flex;align-items:center;gap:6px;}
+  .terminal-scan-box{width:100%;max-width:420px;min-height:280px;border-radius:16px;overflow:hidden;background:#000;border:1px solid var(--border);align-self:center;flex:0 0 auto;position:relative;}
+  .terminal-scan-box video{width:100% !important;}
+  .terminal-scan-box.paused::after{content:"✓ Oxundu";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(52,211,153,.18);color:var(--success);font-weight:700;font-size:15px;letter-spacing:.3px;}
+  .term-search-box{align-self:center;width:100%;max-width:420px;position:relative;display:flex;align-items:center;flex:0 0 auto;}
+  .term-search-box svg{position:absolute;left:12px;width:16px;height:16px;color:var(--text-muted);}
+  .term-search-box input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 12px 11px 36px;font-size:13.5px;color:var(--text-primary);}
+  .term-search-box input:focus{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
+  .term-search-results{align-self:center;width:100%;max-width:420px;display:none;flex-direction:column;gap:6px;text-align:left;flex:0 0 auto;}
+  .term-search-results.show{display:flex;}
+  .term-search-item{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;font-size:13px;}
+  .term-search-item:hover{border-color:var(--accent-dim);background:var(--bg-panel-2);}
+  .term-search-item .tsi-name{font-weight:600;color:var(--text-primary);}
+  .term-search-item .tsi-price{font-family:var(--font-mono);color:var(--accent);font-weight:700;flex:0 0 auto;}
+  .term-search-empty{font-size:12.5px;color:var(--text-muted);padding:10px 4px;}
+
+  /* Çəki (kg) giriş modalı */
+  .weigh-qty-wrap{display:flex;align-items:center;gap:10px;justify-content:center;margin:6px 0 14px;}
+  .weigh-step-btn{width:44px;height:44px;border-radius:12px;background:var(--bg-panel-2);border:1px solid var(--border);font-size:20px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;justify-content:center;}
+  .weigh-step-btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+  #weighQtyInput{width:130px;text-align:center;background:var(--bg-input);border:1px solid var(--border);border-radius:11px;padding:12px 6px;font-family:var(--font-mono);font-size:22px;font-weight:700;}
+  .weigh-quick-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:6px;}
+  .weigh-quick-btn{background:var(--bg-panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);}
+  .weigh-quick-btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+  .weigh-total-line{text-align:center;font-size:13px;color:var(--text-secondary);margin-top:6px;}
+  .weigh-total-line b{color:var(--accent);font-family:var(--font-mono);}
+
+  .ci-qty-input{width:52px;text-align:center;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:3px 2px;font-family:var(--font-mono);font-size:12.5px;color:var(--text-primary);}
 
   .sales-body{flex:1;display:flex;min-height:0;}
   .product-pane{flex:1;min-width:0;display:flex;flex-direction:column;}
@@ -360,6 +445,8 @@
   .receipt-total span:last-child{color:var(--accent);font-family:var(--font-mono);}
   .receipt-pay-line{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-bottom:2px;}
   .receipt-pay-line b{font-family:var(--font-mono);color:var(--text-secondary);}
+  .receipt-pay-line.debt{color:var(--danger);}
+  .receipt-pay-line.debt b{color:var(--danger);}
 
   /* ===== ONLİNE SATIŞ (satış tarixçəsi) ===== */
   .os-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:16px 18px 4px;flex:0 0 auto;}
@@ -692,6 +779,81 @@
   .apc-del:hover{color:var(--danger);}
   .apc-del svg{width:13px;height:13px;}
 
+  /* ===== MÜŞTƏRİLƏR (customers / veresiyə) ===== */
+  .cust-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 0;flex-wrap:wrap;}
+  .cust-search-row{display:flex;align-items:center;gap:10px;padding:14px 18px 0;flex-wrap:wrap;}
+  .cust-search-row .search-box{flex:1;min-width:180px;}
+  .cust-sort-group{display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:11px;padding:4px;gap:2px;}
+  .cust-sort-btn{padding:7px 12px;border-radius:8px;font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap;transition:background .15s,color .15s;}
+  .cust-sort-btn.active{background:var(--accent);color:#1a1206;}
+  .cust-list-wrap{flex:1;overflow-y:auto;padding:16px 18px 24px;}
+  .cust-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+  .cust-card{cursor:pointer;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px;display:flex;align-items:center;gap:12px;text-align:left;transition:border-color .15s,background .15s,transform .1s;position:relative;}
+  .cust-card:hover{border-color:#3a4048;background:var(--bg-panel-2);}
+  .cust-card:active{transform:scale(.99);}
+  .cust-card .cu-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(155deg,var(--accent),#a9761f);color:#1a1206;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:15px;flex:0 0 auto;}
+  .cust-card .cu-info{flex:1;min-width:0;}
+  .cust-card .cu-name{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cust-card .cu-phone{font-size:11px;color:var(--text-muted);margin-top:2px;}
+  .cust-card .cu-debt{font-family:var(--font-mono);font-weight:700;font-size:13.5px;color:var(--text-muted);flex:0 0 auto;text-align:right;}
+  .cust-card .cu-debt.has-debt{color:var(--danger);}
+  .cust-card .cu-debt-lbl{display:block;font-family:var(--font-body);font-weight:500;font-size:9.5px;color:var(--text-muted);margin-top:2px;}
+  .cust-card .cu-del{position:absolute;top:10px;right:10px;color:var(--text-muted);padding:4px;border-radius:6px;background:transparent;}
+  .cust-card .cu-del:hover{color:var(--danger);background:var(--danger-soft);}
+  .cust-card .cu-del svg{width:14px;height:14px;}
+
+  .cust-detail-head{display:flex;align-items:center;gap:14px;padding:18px;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;}
+  .cust-detail-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(155deg,var(--accent),#a9761f);color:#1a1206;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:19px;flex:0 0 auto;}
+  .cust-detail-info{flex:1;min-width:160px;}
+  .cust-detail-info h3{font-family:var(--font-display);font-size:17px;font-weight:700;}
+  .cust-detail-info span{font-size:12px;color:var(--text-muted);}
+  .cust-debt-box{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-card);padding:12px 18px;text-align:right;}
+  .cust-debt-box .lbl{font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.3px;}
+  .cust-debt-box .val{font-family:var(--font-display);font-size:21px;font-weight:700;color:var(--danger);}
+  .cust-debt-box .val.zero{color:var(--success);}
+  .cust-actions-row{display:flex;gap:10px;padding:16px 18px 0;flex-wrap:wrap;}
+  .cust-actions-row .btn{flex:1;min-width:150px;}
+  .cust-txn-wrap{flex:1;overflow-y:auto;padding:16px 18px 24px;}
+  .cust-txn-title{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:600;margin-bottom:10px;}
+  .cust-txn-list{display:flex;flex-direction:column;gap:9px;}
+  .cust-txn-row{display:flex;align-items:center;gap:12px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-card);padding:12px 14px;}
+  .cust-txn-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;background:var(--danger-soft);color:var(--danger);}
+  .cust-txn-icon svg{width:16px;height:16px;}
+  .cust-txn-row.is-payment .cust-txn-icon{background:var(--success-soft);color:var(--success);}
+  .cust-txn-info{flex:1;min-width:0;}
+  .cust-txn-label{font-size:13px;font-weight:600;}
+  .cust-txn-meta{font-size:11px;color:var(--text-muted);margin-top:2px;}
+  .cust-txn-amt{font-family:var(--font-mono);font-weight:700;font-size:13.5px;color:var(--danger);flex:0 0 auto;}
+  .cust-txn-row.is-payment .cust-txn-amt{color:var(--success);}
+  .cust-txn-receipt{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;}
+  .cust-txn-receipt:hover{color:var(--accent);border-color:var(--accent-dim);}
+  .cust-txn-receipt svg{width:14px;height:14px;}
+
+  .txn-amount-wrap{display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;}
+  .txn-amount-wrap input{flex:1;background:transparent;border:none;outline:none;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-primary);}
+  .txn-amount-wrap span{color:var(--text-muted);font-weight:600;}
+
+  .pv-customer-box{margin-top:14px;}
+  .pv-customer-pick{display:flex;align-items:center;gap:10px;background:var(--bg-input);border:1px dashed var(--border);border-radius:var(--radius-sm);padding:11px 13px;font-size:12.5px;color:var(--text-secondary);font-weight:600;}
+  .pv-customer-pick svg{width:16px;height:16px;flex:0 0 auto;color:var(--text-muted);}
+  .pv-customer-chip{display:flex;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);padding:10px 13px;}
+  .pv-customer-chip .pcc-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#1a1206;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:11.5px;flex:0 0 auto;}
+  .pv-customer-chip .pcc-info{flex:1;min-width:0;}
+  .pv-customer-chip .pcc-name{font-size:12.5px;font-weight:700;color:var(--text-primary);}
+  .pv-customer-chip .pcc-debt{font-size:10.5px;color:var(--text-muted);}
+  .pv-customer-chip .pcc-change{color:var(--text-secondary);font-size:11px;font-weight:600;padding:5px 9px;border-radius:7px;background:var(--bg-panel-2);}
+  .pv-customer-chip .pcc-change:hover{color:var(--accent);}
+  .pv-customer-search-list{margin-top:8px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+  .pv-cust-opt{display:flex;align-items:center;gap:10px;background:var(--bg-panel);border:1px solid var(--border);border-radius:9px;padding:9px 11px;text-align:left;}
+  .pv-cust-opt:hover{border-color:var(--accent-dim);background:var(--bg-panel-2);}
+  .pv-cust-opt .pco-avatar{width:26px;height:26px;border-radius:50%;background:var(--bg-panel-2);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:10.5px;flex:0 0 auto;}
+  .pv-cust-opt .pco-name{flex:1;font-size:12.5px;font-weight:600;}
+  .pv-cust-opt .pco-debt{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);}
+  .method-tab.tab-debt.active{background:var(--danger);color:#fff;}
+  .os-filter-btn.active[data-type="debt"]{background:var(--danger);color:#fff;}
+  .os-card .os-debt-badge{display:inline-block;background:var(--danger-soft);color:var(--danger);font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:6px;vertical-align:middle;}
+  .fis-pay-row.debt{color:var(--danger);}
+
   /* ===== MODALS ===== */
   .modal-overlay{position:fixed;inset:0;background:rgba(4,5,6,.65);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;}
   .modal-overlay.show{opacity:1;pointer-events:auto;}
@@ -728,6 +890,19 @@
   .bg-swatch.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .bg-swatch-custom{display:flex;align-items:center;justify-content:center;background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);cursor:pointer;}
   .bg-swatch-custom input[type=color]{opacity:0;width:26px;height:26px;cursor:pointer;position:absolute;inset:0;border:none;padding:0;}
+
+  /* image source (gallery / camera) buttons */
+  .img-source-row{display:flex;gap:8px;margin:-4px 0 14px;}
+  .img-source-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 8px;border-radius:9px;border:1px solid var(--border);background:var(--bg-panel-2);font-size:12px;font-weight:600;color:var(--text-secondary);transition:border-color .15s,color .15s,background .15s;}
+  .img-source-btn svg{width:15px;height:15px;flex:0 0 auto;}
+  .img-source-btn:hover{border-color:var(--accent-dim);color:var(--text-primary);}
+  .img-source-btn:active{transform:scale(.98);}
+
+  /* unit (ədəd / çəki) toggle */
+  .unit-choice{display:flex;gap:8px;}
+  .unit-opt{flex:1;padding:9px 6px;border-radius:9px;border:1px solid var(--border);background:var(--bg-input);font-size:12.5px;font-weight:600;color:var(--text-secondary);text-align:center;transition:border-color .15s,color .15s,background .15s;}
+  .unit-opt.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+  .unit-opt:active{transform:scale(.98);}
 
   /* ================= MOBILE ================= */
   @media (max-width: 860px){
@@ -797,6 +972,16 @@
   .set-pin-eye{color:var(--text-muted);width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .set-pin-eye:hover{background:var(--bg-panel-2);color:var(--text-primary);}
   .set-pin-eye svg{width:16px;height:16px;}
+
+  .api-key-list{display:flex;flex-direction:column;gap:10px;}
+  .api-key-row{display:flex;align-items:center;gap:10px;background:var(--bg-panel-2);border:1px solid var(--border-soft);border-radius:12px;padding:11px 14px;flex-wrap:wrap;}
+  .api-key-row-label{font-size:12px;color:var(--text-muted);min-width:120px;flex:0 0 auto;}
+  .api-key-row-val{font-family:var(--font-mono);font-size:12.5px;color:var(--text-primary);background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .api-key-row-btns{display:flex;gap:6px;flex:0 0 auto;}
+  .api-key-btn{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);background:transparent;border:1px solid var(--border);}
+  .api-key-btn:hover{color:var(--accent);border-color:var(--accent-dim);}
+  .api-key-btn svg{width:14px;height:14px;}
+  .api-key-note{font-size:12px;color:var(--text-muted);padding:6px 2px 0;}
 
   .emp-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
   .emp-search{max-width:260px;flex:1;}
@@ -870,7 +1055,7 @@
 
 <!-- ============ LOGIN SCREEN ============ -->
 <section id="loginScreen">
-  <form class="login-card" id="loginForm" autocomplete="off">
+  <div class="login-card" id="loginCard">
     <div class="brand">
       <div class="brand-mark">
         <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -883,35 +1068,70 @@
         </svg>
       </div>
       <div class="brand-name">Panther</div>
-      <div class="brand-sub">POS &amp; ERP Sistemi</div>
+      <div class="brand-sub" id="loginStepSub">POS &amp; ERP Sistemi</div>
     </div>
 
-    <div class="field">
-      <label for="loginUser">İstifadəçi adı</label>
-      <div class="input-wrap">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M5 19.5c1.4-3.4 4-5 7-5s5.6 1.6 7 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <input type="text" id="loginUser" placeholder="istifadəçi adınızı daxil edin" required>
+    <!-- ===== STEP 1: ŞİRKƏT GİRİŞİ ===== -->
+    <form id="companyLoginForm" autocomplete="off">
+      <div class="field">
+        <label for="companyUser">Şirkət girişi</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 21V6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 10h7a1 1 0 0 1 1 1v10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 9h1M7 13h1M7 17h1M15 14h1M15 17h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input type="text" id="companyUser" name="pnthr_company_id" autocomplete="off" placeholder="şirkət adını daxil edin" readonly required>
+        </div>
       </div>
-    </div>
 
-    <div class="field">
-      <label for="loginPass">Şifrə</label>
-      <div class="input-wrap">
-        <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.5"/></svg>
-        <input type="password" id="loginPass" placeholder="••••••••••" required>
-        <button type="button" class="toggle-pass" id="togglePass" aria-label="Şifrəni göstər">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
-        </button>
+      <div class="field">
+        <label for="companyPass">Şirkət şifrəsi</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.5"/></svg>
+          <input type="password" id="companyPass" name="pnthr_company_pw" autocomplete="off" placeholder="••••••••••" readonly required>
+          <button type="button" class="toggle-pass" id="toggleCompanyPass" aria-label="Şifrəni göstər">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+        </div>
       </div>
-    </div>
 
-    <div class="login-btn-row">
-      <button type="submit" class="btn btn-accent btn-block">Daxil ol</button>
-    </div>
-    <div class="login-err" id="loginErr"></div>
+      <div class="login-btn-row">
+        <button type="submit" class="btn btn-accent btn-block">Davam et</button>
+      </div>
+      <div class="login-err" id="companyLoginErr"></div>
 
-    <div class="login-hint">Panther &mdash; satış nöqtəsi idarəetmə sistemi<br>Bütün hüquqlar qorunur</div>
-  </form>
+      <div class="login-hint">Panther &mdash; satış nöqtəsi idarəetmə sistemi<br>Bütün hüquqlar qorunur</div>
+    </form>
+
+    <!-- ===== STEP 2: İSTİFADƏÇİ GİRİŞİ ===== -->
+    <form id="loginForm" class="hidden" autocomplete="off">
+      <div class="company-active-chip" id="companyActiveChip"></div>
+
+      <div class="field">
+        <label for="loginUser">İstifadəçi adı</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M5 19.5c1.4-3.4 4-5 7-5s5.6 1.6 7 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input type="text" id="loginUser" name="pnthr_app_user" autocomplete="off" placeholder="istifadəçi adınızı daxil edin" readonly required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="loginPass">Şifrə</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.5"/></svg>
+          <input type="password" id="loginPass" name="pnthr_app_pw" autocomplete="off" placeholder="••••••••••" readonly required>
+          <button type="button" class="toggle-pass" id="togglePass" aria-label="Şifrəni göstər">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="login-btn-row">
+        <button type="submit" class="btn btn-accent btn-block">Daxil ol</button>
+        <button type="button" class="btn btn-ghost btn-block" id="backToCompanyBtn">Geri</button>
+      </div>
+      <div class="login-err" id="loginErr"></div>
+
+      <div class="login-hint">Panther &mdash; satış nöqtəsi idarəetmə sistemi<br>Bütün hüquqlar qorunur</div>
+    </form>
+  </div>
 </section>
 
 <!-- ============ APP SHELL ============ -->
@@ -949,7 +1169,10 @@
             <ellipse cx="12.1" cy="18.1" rx="1.55" ry="1.9" fill="var(--bg-titlebar)"/>
             <ellipse cx="19.9" cy="18.1" rx="1.55" ry="1.9" fill="var(--bg-titlebar)"/>
           </svg></div>
-          <span>Panther</span>
+          <div style="display:flex;flex-direction:column;line-height:1.3;min-width:0;">
+            <span>Panther</span>
+            <span id="sidebarCompanyName" style="font-size:10px;font-weight:500;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+          </div>
         </div>
 
         <button class="nav-item active" data-nav="sales">
@@ -960,6 +1183,10 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h12v17.2a.7.7 0 0 1-1.06.6L15 19.3l-1.94 1.5a.7.7 0 0 1-.86 0L10.26 19.3 8.06 20.8a.7.7 0 0 1-1.06-.6V3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Onlayn satış
         </button>
+        <button class="nav-item" data-nav="reports">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 19V9M11 19V4M18 19v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Hesabatlar
+        </button>
         <button class="nav-item" data-nav="stok">
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16M4 10h16M4 15h10M4 20h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Stok
@@ -968,13 +1195,18 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M21 8v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 8h19l-1.7-4.3a1 1 0 0 0-.9-.7H5.1a1 1 0 0 0-.9.7L2.5 8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12a3 3 0 0 0 6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Mal qəbulu
         </button>
+        <button class="nav-item" data-nav="customers">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M16 19v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.6A3.6 3.6 0 0 0 4 17.4V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9.8" cy="8.2" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 5.1a3.2 3.2 0 0 1 0 6.2M20 19v-1.6a3.6 3.6 0 0 0-2.4-3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Müştərilər
+        </button>
+        <button class="nav-item" data-nav="sitizleme">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="1.5"/></svg>
+          Sit izləmə
+          <span class="soon">Tezliklə</span>
+        </button>
         <button class="nav-item" data-nav="inventory">
           <svg viewBox="0 0 24 24" fill="none"><path d="M3 7l9-4 9 4-9 4-9-4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7M12 11v10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           Anbar
-        </button>
-        <button class="nav-item" data-nav="reports">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M4 19V9M11 19V4M18 19v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          Hesabatlar
         </button>
         <button class="nav-item" data-nav="settings">
           <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" stroke="currentColor" stroke-width="1.3"/></svg>
@@ -994,7 +1226,7 @@
 
         <!-- SALES VIEW -->
         <section class="view active" id="view-sales">
-          <div class="sales-toolbar">
+          <div class="sales-toolbar" id="salesToolbar">
             <div class="search-box">
               <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
               <input type="text" id="searchInput" placeholder="Məhsul adı ilə axtar...">
@@ -1002,13 +1234,30 @@
             <div class="barcode-box">
               <svg viewBox="0 0 24 24" fill="none"><path d="M4 5v14M8 5v14M11 5v14M13 5v14M17 5v14M20 5v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
               <input type="text" id="barcodeInput" placeholder="Barkod daxil et / skan et" autocomplete="off">
+              <button type="button" class="barcode-cam-btn" id="barcodeCamBtn" title="Kamera ilə skan et">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
             </div>
             <button class="refresh-btn" id="refreshProductsBtn" title="Məhsulları yenilə">
               <svg viewBox="0 0 24 24" fill="none"><path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 15A8 8 0 0 0 20 12M18.5 9A8 8 0 0 0 4 12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
             </button>
           </div>
 
-          <div class="sales-body">
+          <div class="sale-mode-bar" id="saleModeBar">
+            <div class="sm-switch" id="smSwitch">
+              <button type="button" data-mode="lokal" class="active">Lokal</button>
+              <button type="button" data-mode="kassa">Kassa (şəbəkə)</button>
+            </div>
+            <div class="sm-role-row hidden" id="smRoleRow">
+              <input type="text" class="sm-room-input" id="smRoomInput" placeholder="Otaq kodu" maxlength="20">
+              <button type="button" class="sm-role-btn" id="smRoleKassaBtn">🖥️ Kassa</button>
+              <button type="button" class="sm-role-btn" id="smRoleTerminalBtn">📷 Terminal</button>
+            </div>
+            <div class="sm-status hidden" id="smStatus"><span class="dot"></span><span id="smStatusText">—</span></div>
+            <button type="button" class="sm-leave-btn hidden" id="smLeaveBtn">Ayrıl</button>
+          </div>
+
+          <div class="sales-body" id="salesBody">
             <div class="product-pane">
               <div class="product-grid-wrap">
                 <div class="product-grid" id="productGrid"></div>
@@ -1031,6 +1280,21 @@
                 </button>
               </div>
             </aside>
+          </div>
+
+          <div class="terminal-view" id="terminalView">
+            <div class="term-topbar">
+              <button type="button" class="btn btn-ghost term-exit-btn" id="terminalExitBtn">
+                <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M15 17l-5-5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Terminaldan ayrıl
+              </button>
+            </div>
+            <div class="terminal-scan-box" id="terminalScanBox"></div>
+            <div class="term-search-box">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <input type="text" id="terminalSearchInput" placeholder="Məhsul adı ilə axtar..." autocomplete="off">
+            </div>
+            <div class="term-search-results" id="terminalSearchResults"></div>
           </div>
 
           <button class="cart-fab hidden" id="cartFab">
@@ -1075,6 +1339,21 @@
                       <svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5" width="19" height="14" rx="2.2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 10h19" stroke="currentColor" stroke-width="1.6"/></svg>
                       Kart
                     </button>
+                    <button class="method-tab tab-debt" id="tabDebt" data-method="debt">
+                      <svg viewBox="0 0 24 24" fill="none"><path d="M4 21V8l8-5 8 5v13" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 21v-6h6v6M4 21h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                      Borc
+                    </button>
+                  </div>
+
+                  <div class="pv-customer-box hidden" id="pvCustomerBox">
+                    <div id="pvCustomerChosenArea"></div>
+                    <div id="pvCustomerSearchArea" class="hidden">
+                      <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                        <input type="text" id="pvCustomerSearchInput" placeholder="Müştəri adı və ya nömrə ilə axtar...">
+                      </div>
+                      <div class="pv-customer-search-list" id="pvCustomerSearchList"></div>
+                    </div>
                   </div>
 
                   <div class="amount-input-wrap">
@@ -1269,6 +1548,7 @@
               <button type="button" class="os-filter-btn active" data-type="all">Hamısı</button>
               <button type="button" class="os-filter-btn" data-type="sale">Satış</button>
               <button type="button" class="os-filter-btn" data-type="return">Geri qaytarma</button>
+              <button type="button" class="os-filter-btn" data-type="debt">Borc</button>
             </div>
             <div class="search-box">
               <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1318,6 +1598,68 @@
                 <span>Yuxarıdan fiş ID daxil edin və ya "Onlayn satışdan seç" düyməsinə basaraq siyahıdan tapın.</span>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- MÜŞTƏRİLƏR: LIST -->
+        <section class="view" id="view-customers">
+          <div class="cust-toolbar">
+            <div class="anbar-toolbar-title">
+              <div>
+                <h3>Müştərilər</h3>
+                <span class="muted-sub">Veresiyə sistemi — müştəri borclarını izləyin</span>
+              </div>
+            </div>
+            <button class="btn btn-accent btn-sm" id="addCustomerBtn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="btn-text">Müştəri əlavə et</span>
+            </button>
+          </div>
+          <div class="cust-search-row">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <input type="text" id="customerSearchInput" placeholder="Ad, soyad və ya nömrə ilə axtar...">
+            </div>
+            <div class="cust-sort-group" id="customerSortGroup">
+              <button type="button" class="cust-sort-btn active" data-sort="none">Sıralama</button>
+              <button type="button" class="cust-sort-btn" data-sort="desc">Borc: çox → az</button>
+              <button type="button" class="cust-sort-btn" data-sort="asc">Borc: az → çox</button>
+            </div>
+          </div>
+          <div class="cust-list-wrap">
+            <div class="cust-grid" id="customerGrid"></div>
+          </div>
+        </section>
+
+        <!-- MÜŞTƏRİLƏR: DETAIL -->
+        <section class="view" id="view-customer-detail">
+          <div class="cust-detail-head">
+            <button class="back-btn" id="customerBackBtn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="cust-detail-avatar" id="custDetailAvatar">?</div>
+            <div class="cust-detail-info">
+              <h3 id="custDetailName">Müştəri</h3>
+              <span id="custDetailPhone">—</span>
+            </div>
+            <div class="cust-debt-box">
+              <div class="lbl">Ümumi borc</div>
+              <div class="val" id="custDetailDebt">0.00 ₼</div>
+            </div>
+          </div>
+          <div class="cust-actions-row">
+            <button class="btn btn-danger" id="custWriteDebtBtn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Borc yaz
+            </button>
+            <button class="btn btn-accent" id="custPayDebtBtn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Borcu ödə
+            </button>
+          </div>
+          <div class="cust-txn-wrap">
+            <div class="cust-txn-title">Əməliyyat tarixçəsi</div>
+            <div class="cust-txn-list" id="custTxnList"></div>
           </div>
         </section>
 
@@ -1409,6 +1751,10 @@
                 <span class="muted-sub">Mal qəbul etmək üçün əvvəlcə cari seçin</span>
               </div>
             </div>
+            <button class="btn btn-ghost btn-sm" id="malHistoryBtn">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="btn-text">Keçmiş</span>
+            </button>
           </div>
           <div class="anbar-search-row">
             <div class="search-box">
@@ -1418,6 +1764,27 @@
           </div>
           <div class="anbar-list-wrap">
             <div class="cari-grid" id="malCariGrid"></div>
+          </div>
+        </section>
+
+        <!-- MAL QƏBULU: KEÇMİŞ -->
+        <section class="view" id="view-mal-history">
+          <div class="anbar-toolbar">
+            <div class="anbar-toolbar-title">
+              <button class="back-btn" id="malHistoryBackBtn">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div>
+                <h3>Mal qəbulu keçmişi</h3>
+                <span class="muted-sub">Bütün mal qəbulu sənədləri, tarixə görə</span>
+              </div>
+            </div>
+            <button class="refresh-btn" id="malHistoryRefreshBtn" title="Yenilə">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 15A8 8 0 0 0 20 12M18.5 9A8 8 0 0 0 4 12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="anbar-list-wrap">
+            <div class="os-list" id="malHistoryList"></div>
           </div>
         </section>
 
@@ -1456,7 +1823,7 @@
                   Basılı tutub stoka çək
                 </span>
               </button>
-              <span class="mal-hold-hint">5 saniyə basılı saxlayın</span>
+              <span class="mal-hold-hint">3 saniyə basılı saxlayın</span>
             </div>
           </div>
         </section>
@@ -1518,6 +1885,21 @@
               <div class="emp-list" id="empList"></div>
             </div>
 
+            <div class="set-section" id="setApiSection">
+              <div class="set-section-head">
+                <div class="set-section-head-title">
+                  <div class="set-section-ico">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M14.5 9.5 20 4M17.5 6.5 20 4l0 0M12.8 11.2a4.2 4.2 0 1 1-5.9 5.9 4.2 4.2 0 0 1 5.9-5.9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M14.5 9.5 17 12l2-2-2.5-2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </div>
+                  <div>
+                    <h4>API açarları</h4>
+                    <span class="set-section-sub">Bu şirkət hesabı üçün Supabase / Imgbb / RemoveBackground konfiqurasiyası (GitHub-dan yüklənib)</span>
+                  </div>
+                </div>
+              </div>
+              <div class="api-key-list" id="apiKeyList"></div>
+            </div>
+
           </div>
         </section>
 
@@ -1543,6 +1925,49 @@
     </div>
   </div>
 
+  <div class="modal-box" id="customerModal">
+    <div class="modal-head"><h3 id="customerModalTitle">Yeni müştəri</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="field plain">
+        <label for="customerNameInput">Müştəri adı</label>
+        <input type="text" id="customerNameInput" placeholder="Məs: Elvin">
+      </div>
+      <div class="field plain">
+        <label for="customerSurnameInput">Soyadı</label>
+        <input type="text" id="customerSurnameInput" placeholder="Məs: Məmmədov">
+      </div>
+      <div class="field plain">
+        <label for="customerPhoneInput">Nömrə (opsional)</label>
+        <input type="text" id="customerPhoneInput" placeholder="Məs: 050 123 45 67" inputmode="tel">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close>Ləğv et</button>
+      <button class="btn btn-accent" id="saveCustomerBtn">Yadda saxla</button>
+    </div>
+  </div>
+
+  <div class="modal-box" id="custTxnModal">
+    <div class="modal-head"><h3 id="custTxnModalTitle">Borc yaz</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="field plain" style="margin-bottom:8px;">
+        <label>Məbləğ</label>
+        <div class="txn-amount-wrap">
+          <input type="text" inputmode="decimal" id="custTxnAmountInput" value="0">
+          <span>₼</span>
+        </div>
+      </div>
+      <div class="field plain">
+        <label for="custTxnNoteInput">Qeyd (opsional)</label>
+        <input type="text" id="custTxnNoteInput" placeholder="Məs: nağd hissə ödədi">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close>Ləğv et</button>
+      <button class="btn btn-accent" id="saveCustTxnBtn">Təsdiqlə</button>
+    </div>
+  </div>
+
   <div class="modal-box modal-box-lg" id="productModal">
     <div class="modal-head"><h3>Yeni məhsul</h3><button class="modal-close" data-close>&times;</button></div>
     <div class="modal-body">
@@ -1550,11 +1975,22 @@
         <img id="imgPreview" class="hidden">
         <div class="img-upload-empty" id="imgUploadEmpty">
           <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M21 15l-5-5-4 4-2-2-5 5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-          <span>Şəkil seçmək üçün klikləyin</span>
+          <span>Şəkil seçmək üçün klikləyin (məcburi deyil)</span>
         </div>
         <button type="button" class="img-clear hidden" id="imgClearBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-        <input type="file" accept="image/*" id="productImageInput" class="hidden">
       </div>
+      <div class="img-source-row">
+        <button type="button" class="img-source-btn" id="imgGalleryBtn">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M21 15l-5-5-4 4-2-2-5 5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <span>Qalereya</span>
+        </button>
+        <button type="button" class="img-source-btn" id="imgCameraBtn">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span>Kamera</span>
+        </button>
+      </div>
+      <input type="file" accept="image/*" id="productImageInput" class="hidden">
+      <input type="file" accept="image/*" capture="environment" id="productImageCameraInput" class="hidden">
       <div class="bg-choice hidden" id="bgChoice">
         <button type="button" class="bg-opt active" data-bg="keep">Original saxla</button>
         <button type="button" class="bg-opt" data-bg="remove">Arxa planı sil</button>
@@ -1575,14 +2011,58 @@
       <div class="form-grid">
         <div class="field plain"><label for="pBrand">Marka adı</label><input type="text" id="pBrand" placeholder="Məs: Milka"></div>
         <div class="field plain"><label for="pName">Ürün ismi *</label><input type="text" id="pName" placeholder="Məhsul adı"></div>
-        <div class="field plain"><label for="pBarcode">Barkod</label><input type="text" id="pBarcode" placeholder="Məcburi deyil"></div>
+        <div class="field plain">
+          <label for="pBarcode">Barkod</label>
+          <div class="pbarcode-wrap">
+            <input type="text" id="pBarcode" placeholder="Məcburi deyil">
+            <button type="button" class="barcode-cam-btn" id="pBarcodeCamBtn" title="Kamera ilə skan et">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="field plain">
+          <label>Ölçü vahidi</label>
+          <div class="unit-choice" id="unitChoice">
+            <button type="button" class="unit-opt active" data-unit="eded">Ədəd</button>
+            <button type="button" class="unit-opt" data-unit="ceki">Çəki (kg)</button>
+          </div>
+        </div>
         <div class="field plain"><label for="pBuy">Alış qiyməti (₼)</label><input type="number" id="pBuy" value="0" step="0.01" min="0"></div>
         <div class="field plain"><label for="pSell">Satış qiyməti (₼)</label><input type="number" id="pSell" value="0" step="0.01" min="0"></div>
+        <div class="field plain"><label for="pStock">İlkin stok (miqdar)</label><input type="number" id="pStock" value="0" step="0.001" min="0" placeholder="Məs: 12"></div>
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close>Ləğv et</button>
       <button class="btn btn-accent" id="saveProductBtn">Yadda saxla</button>
+    </div>
+  </div>
+
+  <div class="modal-box" id="weighModal">
+    <div class="modal-head"><h3 id="weighModalTitle">Çəki daxil et</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="weigh-quick-row" id="weighQuickRow"></div>
+      <div class="weigh-qty-wrap">
+        <button type="button" class="weigh-step-btn" id="weighMinusBtn">−</button>
+        <input type="text" inputmode="decimal" id="weighQtyInput" value="1.000">
+        <button type="button" class="weigh-step-btn" id="weighPlusBtn">+</button>
+      </div>
+      <div class="weigh-total-line">Cəmi: <b id="weighTotalLine">0.00 ₼</b></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close>Ləğv et</button>
+      <button class="btn btn-accent" id="weighConfirmBtn">Səbətə əlavə et</button>
+    </div>
+  </div>
+
+  <div class="modal-box" id="barcodeScanModal">
+    <div class="modal-head"><h3>Barkodu skan et</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="barcode-scan-box" id="barcodeReaderBox"></div>
+      <p class="barcode-scan-hint">Barkodu kameranın qarşısına tutun — hər oxunanda məhsul avtomatik səbətə əlavə olunacaq. Bitirdikdə "Bağla" düyməsini basın.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close>Ləğv et</button>
     </div>
   </div>
 
@@ -1762,17 +2242,130 @@
   "use strict";
 
   /* ---------------- CONFIG ---------------- */
-  const ADMIN = { username: "vonlab", password: "20241816Zr@#" };
+  // Şirkət hesabları GitHub raw faylından yüklənir (Supabase/Imgbb/RemoveBg
+  // API-ləri artıq kodun içində sabit deyil — hər şirkət üçün ayrıca gəlir).
+  const ACCOUNTS_URL = "https://raw.githubusercontent.com/vonlabstudio-boop/panthererp/refs/heads/main/Accounts";
+  const COMPANY_KEY = "panther_company_v1";
 
-  const SUPABASE_URL = "https://noaavemujlyvlefpetaw.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_Wjv5SgSTG9W7cfftD_Ni4Q_iMWP9PhL";
-  const IMGBB_KEY = "8ebacf573bb451a952fdfe43ef47484c";
-  const BG_REMOVER_KEY = "9izr7mhJz7cFzB64eQgotqrA";
+  let ADMIN = { username: "vonlab", password: "20241816Zr@#" };
+  let SUPABASE_URL = "", SUPABASE_KEY = "", IMGBB_KEY = "", BG_REMOVER_KEY = "";
+  let sb = null;
+  let currentCompany = null; // { login, name, password, supabaseUrl, supabaseKey, imgbbKey, removebgKey }
 
-  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // GitHub raw "Accounts" faylının formatı:
+  //   name:vonlab
+  //   {
+  //   Name:VonLab Beta
+  //   Password:...
+  //   #Supabase
+  //   ProjectId:...
+  //   Api:...
+  //   #Imgbb
+  //   Api:...
+  //   #RemoveBackground
+  //   Api:...
+  //   }
+  // Fayl bir neçə belə blok saxlaya bilər — hər biri ayrıca şirkət hesabıdır.
+  function parseAccountsText(text){
+    const accounts = [];
+    const blockRe = /name\s*:\s*([^\r\n{]+?)\s*\{([\s\S]*?)\}/gi;
+    let m;
+    while((m = blockRe.exec(text))){
+      const acc = { login: m[1].trim(), name:"", password:"", supabaseUrl:"", supabaseKey:"", imgbbKey:"", removebgKey:"" };
+      let section = "";
+      m[2].split(/\r?\n/).forEach(rawLine=>{
+        const line = rawLine.trim();
+        if(!line || line.startsWith("//")) return;
+        if(line.startsWith("#")){ section = line.slice(1).trim().toLowerCase(); return; }
+        const idx = line.indexOf(":");
+        if(idx === -1) return;
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const val = line.slice(idx + 1).trim();
+        if(!section){
+          if(key === "name") acc.name = val;
+          else if(key === "password") acc.password = val;
+        } else if(section === "supabase"){
+          if(key === "projectid") acc.supabaseUrl = `https://${val}.supabase.co`;
+          else if(key === "api") acc.supabaseKey = val;
+        } else if(section === "imgbb"){
+          if(key === "api") acc.imgbbKey = val;
+        } else if(section === "removebackground"){
+          if(key === "api") acc.removebgKey = val;
+        }
+      });
+      if(acc.login) accounts.push(acc);
+    }
+    return accounts;
+  }
+
+  // Şəbəkə zamanla məhdudlaşdırılmış (timeout) fetch — GitHub raw və ya imgbb kimi
+  // xarici servislərə bağlantı problemi olanda uzun müddət "asılı" qalmaq əvəzinə,
+  // müəyyən saniyədən sonra aydın xəta versin və bir dəfə təkrar cəhd etsin.
+  async function fetchWithTimeout(url, options, timeoutMs, retries){
+    timeoutMs = timeoutMs || 12000;
+    retries = retries == null ? 1 : retries;
+    for(let attempt = 0; attempt <= retries; attempt++){
+      const controller = new AbortController();
+      const timer = setTimeout(()=> controller.abort(), timeoutMs);
+      try{
+        const res = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+        clearTimeout(timer);
+        return res;
+      }catch(err){
+        clearTimeout(timer);
+        const isLast = attempt === retries;
+        if(isLast){
+          if(err && err.name === "AbortError"){
+            throw new Error("Bağlantı vaxtı bitdi (timeout) — internet bağlantınızı yoxlayın");
+          }
+          throw err;
+        }
+        // növbəti cəhddən əvvəl qısa gözləmə
+        await new Promise(r=> setTimeout(r, 600));
+      }
+    }
+  }
+
+  async function fetchAccounts(){
+    let res;
+    try{
+      res = await fetchWithTimeout(ACCOUNTS_URL, { cache: "no-store" }, 12000, 1);
+    }catch(err){
+      throw new Error("Hesablar siyahısı yüklənmədi: " + (err && err.message ? err.message : "şəbəkə xətası"));
+    }
+    if(!res.ok) throw new Error("Hesablar siyahısı yüklənmədi (HTTP " + res.status + ")");
+    return parseAccountsText(await res.text());
+  }
+
+  // Seçilmiş şirkətin konfiqurasiyasını tətbiq edir: Supabase client-i yaradır,
+  // Imgbb / RemoveBackground API-lərini quraşdırır və menyuda şirkət adını göstərir.
+  function applyCompany(acc){
+    currentCompany = acc;
+    SUPABASE_URL = acc.supabaseUrl;
+    SUPABASE_KEY = acc.supabaseKey;
+    IMGBB_KEY = acc.imgbbKey;
+    BG_REMOVER_KEY = acc.removebgKey;
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    try{ localStorage.setItem(COMPANY_KEY, JSON.stringify({ login: acc.login })); }catch(e){}
+    const nameEl = document.querySelector("#sidebarCompanyName");
+    if(nameEl) nameEl.textContent = acc.name || acc.login;
+    const chip = document.querySelector("#companyActiveChip");
+    if(chip) chip.textContent = acc.name || acc.login;
+  }
 
   let products = [];      // Satış səhifəsi üçün düz (flat) siyahı — Supabase-dən yüklənir
-  let cart = [];           // {id, name, price, qty, stock}
+  let cart = [];           // {id, name, price, qty, stock, unit}
+  let pendingWeighProductId = null;
+  let pendingWeighAnnounce = false;
+
+  /* ---------------- SATIŞ REJİMİ: Lokal / Kassa-Terminal ---------------- */
+  let saleMode = localStorage.getItem("pnthr_sale_mode") || "lokal"; // 'lokal' | 'kassa'
+  let deviceRole = localStorage.getItem("pnthr_device_role") || "";  // '' | 'kassa' | 'terminal'
+  let roomCode = localStorage.getItem("pnthr_room_code") || "";
+  let pairChannel = null;
+  let pairConnected = false;
+  let terminalScanner = null;
+  let terminalSentCount = 0;
   let currentUsername = "";
   let onlineSales = [];    // Satış tarixçəsi (Supabase "sales" cədvəlindən)
   let onlineReturns = [];  // İadə tarixçəsi (Supabase "returns" cədvəlindən)
@@ -1800,9 +2393,19 @@
   let stokProducts = [];   // Stok səhifəsi üçün — bütün carilər üzrə düz (flat) məhsul siyahısı
   let stokSearchQuery = "";
   let malCariSearchQuery = "";
+
+  /* ---------------- MÜŞTƏRİLƏR (veresiyə / borc) ---------------- */
+  let customers = [];              // Supabase "customers" cədvəlindən
+  let customerSearchQuery = "";
+  let customerSortDir = "none";    // "none" | "desc" (çox->az) | "asc" (az->çox)
+  let currentCustomer = null;      // detal ekranında açıq olan müştəri
+  let customerTxns = [];           // seçilmiş müştərinin əməliyyat tarixçəsi
+  let custTxnMode = "debt";        // custTxnModal: "debt" (borc yaz) | "payment" (borc ödə)
+  let pvSelectedCustomer = null;   // ödəniş ekranında "Borc" tabı üçün seçilmiş müştəri
   let malCari = null;              // Mal qəbulu üçün seçilmiş cari
   let malCariProducts = [];        // seçilmiş carinin məhsulları (Supabase-dən təzə)
   let malReceiveQty = {};          // {product_id: qəbul ediləcək miqdar}
+  let malHistoryData = [];         // Mal qəbulu tarixçəsi (Supabase-dən)
   let malProductSearchQuery = "";
 
   /* ---------------- TƏNZİMLƏMƏLƏR / İŞÇİLƏR / İCAZƏLƏR ---------------- */
@@ -1822,6 +2425,7 @@
     { key:"malqebulu", label:"Mal qəbulu", icon:'<svg viewBox="0 0 24 24" fill="none"><path d="M21 8v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 8h19l-1.7-4.3a1 1 0 0 0-.9-.7H5.1a1 1 0 0 0-.9.7L2.5 8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12a3 3 0 0 0 6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' },
     { key:"inventory", label:"Anbar", icon:'<svg viewBox="0 0 24 24" fill="none"><path d="M3 7l9-4 9 4-9 4-9-4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7M12 11v10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>' },
     { key:"reports", label:"Hesabatlar", icon:'<svg viewBox="0 0 24 24" fill="none"><path d="M4 19V9M11 19V4M18 19v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' },
+    { key:"customers", label:"Müştərilər", icon:'<svg viewBox="0 0 24 24" fill="none"><circle cx="9.8" cy="8.2" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M16 19v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.6A3.6 3.6 0 0 0 4 17.4V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
     { key:"return", label:"Geri qaytarma rejimi", icon:'<svg viewBox="0 0 24 24" fill="none"><path d="M9 14 4 9l5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10a6 6 0 0 1 0 12h-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' }
   ];
 
@@ -1867,6 +2471,32 @@
     toastTimer = setTimeout(()=> el.classList.remove("show"), 3200);
   }
 
+  /* ---------------- SKAN GERİBİLDİRİMİ (titrəmə + bip səsi) ---------------- */
+  let scanAudioCtx = null;
+  function scanFeedback(){
+    // Titrəmə (dəstəklənən cihazlarda)
+    try{ if(navigator.vibrate) navigator.vibrate(70); }catch(e){}
+    // Qısa "bip" səsi (Web Audio API ilə, xarici fayl tələb etmir)
+    try{
+      if(!scanAudioCtx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(AC) scanAudioCtx = new AC();
+      }
+      if(scanAudioCtx){
+        if(scanAudioCtx.state === "suspended") scanAudioCtx.resume();
+        const osc = scanAudioCtx.createOscillator();
+        const gain = scanAudioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 1500;
+        gain.gain.setValueAtTime(0.55, scanAudioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, scanAudioCtx.currentTime + 0.18);
+        osc.connect(gain).connect(scanAudioCtx.destination);
+        osc.start();
+        osc.stop(scanAudioCtx.currentTime + 0.19);
+      }
+    }catch(e){}
+  }
+
   function iconSvg(){
     return '<svg viewBox="0 0 24 24" fill="none"><path d="M3 9l1.2 10.2A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 2-1.8L21 9M3 9h18M3 9l2-5h14l2 5M9 13v3M15 13v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   }
@@ -1877,13 +2507,78 @@
   }
 
   /* ---------------- LOGIN ---------------- */
+  const companyLoginForm = $("#companyLoginForm");
+  const companyLoginErr = $("#companyLoginErr");
   const loginForm = $("#loginForm");
   const loginErr = $("#loginErr");
   const SESSION_KEY = "panther_session_v1";
 
+  function showCompanyLoginStep(){
+    loginForm.classList.add("hidden");
+    companyLoginForm.classList.remove("hidden");
+    $("#loginStepSub").textContent = "POS & ERP Sistemi";
+  }
+  function showUserLoginStep(){
+    companyLoginForm.classList.add("hidden");
+    loginForm.classList.remove("hidden");
+    $("#loginStepSub").textContent = "İstifadəçi girişi";
+    // Brauzer avtomatik doldurmasının şirkət girişindəki dəyərləri bura
+    // sızdırmasının qarşısını almaq üçün sahələri məcburi təmizləyirik.
+    $("#loginUser").value = "";
+    $("#loginPass").value = "";
+  }
+
+  // Brauzerlərin saxlanmış şifrələri səhv sahəyə avtomatik doldurmasının
+  // qarşısını almaq üçün: sahələr başlanğıcda "readonly", yalnız istifadəçi
+  // toxunanda (fokuslananda) redaktə oluna bilən olur.
+  $$(".login-card input[readonly]").forEach(inp=>{
+    inp.addEventListener("focus", ()=> inp.removeAttribute("readonly"), { once:true });
+  });
+
+  $("#toggleCompanyPass").addEventListener("click", ()=>{
+    const inp = $("#companyPass");
+    inp.type = inp.type === "password" ? "text" : "password";
+  });
   $("#togglePass").addEventListener("click", ()=>{
     const inp = $("#loginPass");
     inp.type = inp.type === "password" ? "text" : "password";
+  });
+
+  // Şirkət girişini GitHub raw hesablar faylı ilə yoxlayır
+  async function resolveCompanyLogin(u, p){
+    const accounts = await fetchAccounts();
+    return accounts.find(a => a.login.toLowerCase() === u.toLowerCase() && a.password === p) || null;
+  }
+
+  companyLoginForm.addEventListener("submit", async e=>{
+    e.preventDefault();
+    const u = $("#companyUser").value.trim();
+    const p = $("#companyPass").value;
+    if(!u || !p) return;
+    const submitBtn = companyLoginForm.querySelector('button[type="submit"]');
+    const oldHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true; submitBtn.innerHTML = '<div class="spin"></div>';
+    try{
+      const acc = await resolveCompanyLogin(u, p);
+      submitBtn.disabled = false; submitBtn.innerHTML = oldHtml;
+      if(acc){
+        companyLoginErr.textContent = "";
+        applyCompany(acc);
+        showUserLoginStep();
+      } else {
+        companyLoginErr.textContent = "Şirkət adı və ya şifrə yanlışdır.";
+        const card = $("#loginCard");
+        card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
+      }
+    }catch(err){
+      submitBtn.disabled = false; submitBtn.innerHTML = oldHtml;
+      companyLoginErr.textContent = "Bağlantı xətası. Yenidən cəhd edin.";
+    }
+  });
+
+  $("#backToCompanyBtn").addEventListener("click", ()=>{
+    loginErr.textContent = "";
+    showCompanyLoginStep();
   });
 
   // Admin hesabı ilə yoxlayır, tapılmasa Supabase "employees" cədvəlində axtarır
@@ -1917,6 +2612,12 @@
     loadSalesProducts();
     renderCart();
     navigateTo(firstAllowedNav());
+
+    updateSaleModeUI();
+    if(saleMode === "kassa" && deviceRole){
+      connectPairChannel();
+      if(deviceRole === "terminal") startTerminalScanner();
+    }
   }
 
   loginForm.addEventListener("submit", async e=>{
@@ -1942,8 +2643,11 @@
 
   function doLogout(){
     try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+    leavePairChannel();
+    stopTerminalScanner();
     $("#appShell").classList.add("hidden");
     $("#loginScreen").classList.remove("hidden");
+    showUserLoginStep();
     $("#loginPass").value = "";
     cart = [];
     currentIsAdmin = false;
@@ -1967,12 +2671,13 @@
   $("#burgerBtn").addEventListener("click", openSidebar);
   sidebarOverlay.addEventListener("click", ()=>{ closeSidebar(); closeCartSheet(); });
 
-  const viewTitles = { sales:"Satış", onlinesatis:"Onlayn satış", stok:"Stok", malqebulu:"Mal qəbulu", inventory:"Anbar", reports:"Hesabatlar", settings:"Tənzimləmələr", "return":"Geri qaytarma" };
+  const viewTitles = { sales:"Satış", onlinesatis:"Onlayn satış", stok:"Stok", malqebulu:"Mal qəbulu", inventory:"Anbar", reports:"Hesabatlar", settings:"Tənzimləmələr", "return":"Geri qaytarma", customers:"Müştərilər", sitizleme:"Sit izləmə" };
 
   // Cari istifadəçinin icazələrinə görə burger menyudakı düymələri göstərir/gizlədir
   function canAccessNav(nav){
     if(currentIsAdmin) return true;
     if(nav === "settings") return false; // Tənzimləmələr yalnız Admin üçündür
+    if(nav === "sitizleme") return true; // hələ hazır olmayan bölmə — hamı üçün açıqdır (tezliklə)
     return !!currentPermissions[nav];
   }
 
@@ -1993,7 +2698,7 @@
   }
 
   function firstAllowedNav(){
-    const order = ["sales","onlinesatis","stok","malqebulu","inventory","reports"];
+    const order = ["sales","onlinesatis","reports","stok","malqebulu","customers","inventory"];
     for(const nav of order){ if(canAccessNav(nav)) return nav; }
     return "sales";
   }
@@ -2011,6 +2716,7 @@
     else if(nav === "malqebulu"){ goToView("mal-cari"); loadMalCariView(); }
     else if(nav === "inventory"){ goToView("anbar-cari"); loadCariView(); }
     else if(nav === "reports"){ goToView("reports"); loadReportsView(); }
+    else if(nav === "customers"){ goToView("customers"); loadCustomersView(); }
     else if(nav === "settings"){ goToView("settings"); loadSettingsView(); }
     else { $("#soonTitle").textContent = viewTitles[nav]; goToView("soon"); }
   }
@@ -2313,6 +3019,7 @@
       barcode: p.barcode || "",
       price: Number(p.sale_price)||0,
       stock: Number(p.quantity)||0,
+      unit: p.unit || "eded",
       image_url: p.image_url || ""
     }));
     renderProducts();
@@ -2326,6 +3033,9 @@
     btn.classList.remove("loading");
     toast("Məhsul siyahısı yeniləndi", "ok");
   });
+
+  function unitLabel(unit){ return unit === "ceki" ? "kg" : "ədəd"; }
+  function unitLabelShort(unit){ return unit === "ceki" ? "kg" : "əd"; }
 
   function escapeHtml(str){
     return String(str).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -2363,7 +3073,7 @@
       <button class="product-card ${isOut?'out':''}" data-id="${p.id}" ${isOut?'disabled':''}>
         <div class="pc-media">
           ${mediaHtml}
-          <span class="pc-qty-badge ${isOut||isLow?'low':''}">${isOut ? 'Yoxdur' : remaining+' əd'}</span>
+          <span class="pc-qty-badge ${isOut||isLow?'low':''}">${isOut ? 'Yoxdur' : remaining+' '+unitLabelShort(p.unit)}</span>
           <span class="pc-price-badge">${p.price.toFixed(2)} ₼</span>
           ${inCart>0?`<span class="in-cart-badge">${inCart}</span>`:""}
         </div>
@@ -2385,22 +3095,416 @@
   });
 
   const barcodeInput = $("#barcodeInput");
+
+  function lookupAndAddByBarcode(code, opts){
+    const trimmed = (code||"").trim();
+    if(!trimmed) return;
+    const p = products.find(x=>x.barcode === trimmed);
+    if(!p){ toast("Bu barkoda uyğun məhsul tapılmadı", "err"); return; }
+    if(p.unit === "ceki"){
+      pendingWeighAnnounce = !!(opts && opts.announce);
+      openWeighModal(p.id);
+      return;
+    }
+    addToCart(p.id);
+    if(opts && opts.announce) toast(`"${p.name}" səbətə əlavə olundu`, "ok");
+  }
+
+  function lookupAndAddById(id, opts){
+    const p = products.find(x=>x.id===id);
+    if(!p){ toast("Bu məhsul tapılmadı", "err"); return; }
+    if(p.unit === "ceki"){
+      pendingWeighAnnounce = !!(opts && opts.announce);
+      openWeighModal(p.id);
+      return;
+    }
+    addToCart(p.id);
+    if(opts && opts.announce) toast(`"${p.name}" səbətə əlavə olundu`, "ok");
+  }
+
   barcodeInput.addEventListener("keydown", e=>{
     if(e.key === "Enter"){
       e.preventDefault();
-      const code = barcodeInput.value.trim();
-      if(!code) return;
-      const p = products.find(x=>x.barcode === code);
-      if(!p){ toast("Bu barkoda uyğun məhsul tapılmadı", "err"); }
-      else { addToCart(p.id); }
+      scanFeedback();
+      lookupAndAddByBarcode(barcodeInput.value);
       barcodeInput.value = "";
     }
   });
+
+  /* ---------------- BARKOD SKAN (KAMERA) ---------------- */
+  let barcodeScanner = null;
+  let lastScannedCode = null;
+  let lastScannedAt = 0;
+  let barcodeScanTarget = null; // null = satış səbətinə əlavə et, "pBarcode" kimi id-ölsə həmin inputa yaz
+
+  function stopBarcodeScanner(){
+    if(barcodeScanner){
+      const s = barcodeScanner;
+      barcodeScanner = null;
+      s.stop().then(()=> s.clear()).catch(()=>{});
+    }
+  }
+
+  // Barkod skaneri modalı açılanda, əgər onun arxasında artıq açıq olan başqa bir
+  // modal (məs. "Yeni məhsul") varsa, ikisi eyni overlay içində yan-yana sıxılıb
+  // skaneri çox kiçik göstərirdi. Bunun qarşısını almaq üçün arxadakı modalı
+  // müvəqqəti gizlədirik və skan bitəndə/ləğv olunanda geri qaytarırıq.
+  let hiddenBehindScanner = null;
+
+  function openBarcodeScanner(targetInputId){
+    barcodeScanTarget = targetInputId || null;
+    if(typeof Html5Qrcode === "undefined"){
+      toast("Kamera skaneri yüklənmədi, internet bağlantınızı yoxlayın", "err");
+      return;
+    }
+    // Arxada açıq olan başqa modal(lar) varsa müvəqqəti gizlət
+    hiddenBehindScanner = $$(".modal-box.show").filter(m => m.id !== "barcodeScanModal");
+    hiddenBehindScanner.forEach(m => m.classList.remove("show"));
+
+    openModal("barcodeScanModal");
+    lastScannedCode = null;
+    lastScannedAt = 0;
+    $("#barcodeReaderBox").innerHTML = "";
+    barcodeScanner = new Html5Qrcode("barcodeReaderBox");
+    const formats = (typeof Html5QrcodeSupportedFormats !== "undefined") ? [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ] : undefined;
+    const config = Object.assign({
+      fps: 12,
+      qrbox: (viewfinderWidth, viewfinderHeight)=>{
+        // Ekran ölçüsünə uyğun, mərkəzləşdirilmiş, kifayət qədər böyük skan sahəsi
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const size = Math.floor(minEdge * 0.75);
+        return { width: size, height: Math.floor(size * 0.55) };
+      },
+      aspectRatio: 1.4
+    }, formats ? { formatsToSupport: formats } : {});
+    barcodeScanner.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText)=>{
+        // Skaner davam edir — həmin barkodu qısa müddətdə təkrar oxusa nəzərə almırıq
+        const now = Date.now();
+        if(decodedText === lastScannedCode && (now - lastScannedAt) < 1500) return;
+        lastScannedCode = decodedText;
+        lastScannedAt = now;
+        scanFeedback();
+        if(barcodeScanTarget){
+          // Forma sahəsinə yaz rejimi (məs. Anbarda yeni məhsul əlavə edərkən) —
+          // bir barkod oxunan kimi sahəyə yazıb skaneri dayandırırıq.
+          const el = $("#" + barcodeScanTarget);
+          if(el) el.value = decodedText;
+          toast("Barkod oxundu", "ok");
+          stopBarcodeScanner();
+          closeBarcodeScanModalAndRestore();
+          if(barcodeScanTarget === "pBarcode" && typeof tryAutoFillProductFromBarcode === "function"){
+            tryAutoFillProductFromBarcode(decodedText);
+          }
+          return;
+        }
+        lookupAndAddByBarcode(decodedText, { announce: true });
+      },
+      ()=>{ /* kadr-bə-kadr oxuma xətaları normaldır, ignore edilir */ }
+    ).catch(err=>{
+      toast("Kameraya giriş alınmadı: " + (err && err.message ? err.message : err), "err");
+      closeBarcodeScanModalAndRestore();
+      barcodeScanner = null;
+    });
+  }
+
+  function closeBarcodeScanModalAndRestore(){
+    $("#barcodeScanModal").classList.remove("show");
+    if(hiddenBehindScanner && hiddenBehindScanner.length){
+      hiddenBehindScanner.forEach(m => m.classList.add("show"));
+      hiddenBehindScanner = null;
+      // overlay artıq lazımdır (arxadakı modal göstərilir)
+      $("#modalOverlay").classList.add("show");
+    } else {
+      $("#modalOverlay").classList.remove("show");
+    }
+  }
+
+  $("#barcodeCamBtn").addEventListener("click", ()=> openBarcodeScanner());
+  $("#pBarcodeCamBtn").addEventListener("click", ()=> openBarcodeScanner("pBarcode"));
+
+  /* =========================================================
+     SATIŞ REJİMİ — Lokal / Kassa-Terminal (2 cihaz arası sinxron)
+     - Lokal: hər cihaz öz səbətində müstəqil satış aparır (defolt).
+     - Kassa (şəbəkə): eyni "otaq kodu"nu daxil edən iki cihaz cütləşir.
+       Rolunu "Terminal" seçən cihaz yalnız kamera ilə barkod oxuyur və
+       hər skanı Supabase Realtime broadcast kanalı ilə göndərir.
+       Rolunu "Kassa" seçən cihaz bu barkodları qəbul edib avtomatik
+       öz səbətinə əlavə edir (adi satış kimi ödənişi də o tamamlayır).
+  ========================================================= */
+  function saleModePairChannelName(){
+    const co = (currentCompany && currentCompany.login) ? currentCompany.login : "co";
+    return "pnthr-pair-" + co + "-" + (roomCode || "main");
+  }
+
+  function leavePairChannel(){
+    if(pairChannel){
+      try{ sb.removeChannel(pairChannel); }catch(e){ /* ignore */ }
+      pairChannel = null;
+    }
+    pairConnected = false;
+  }
+
+  function handleIncomingTerminalScan(payload){
+    if(!payload) return;
+    scanFeedback();
+    if(payload.id != null){
+      lookupAndAddById(payload.id, { announce:true });
+    } else if(payload.barcode){
+      lookupAndAddByBarcode(payload.barcode, { announce:true });
+    }
+  }
+
+  function connectPairChannel(){
+    leavePairChannel();
+    if(!sb || saleMode !== "kassa" || !deviceRole) return;
+    pairChannel = sb.channel(saleModePairChannelName(), { config: { broadcast: { self:false } } });
+    pairChannel.on("broadcast", { event:"scan" }, (msg)=>{
+      if(deviceRole === "kassa") handleIncomingTerminalScan(msg.payload || {});
+    });
+    pairChannel.on("broadcast", { event:"ping" }, ()=>{
+      if(deviceRole === "kassa" && pairChannel) pairChannel.send({ type:"broadcast", event:"pong", payload:{} });
+    });
+    pairChannel.on("broadcast", { event:"pong" }, ()=>{
+      if(deviceRole === "terminal"){ pairConnected = true; updateSaleModeUI(); }
+    });
+    pairChannel.subscribe((status)=>{
+      if(status === "SUBSCRIBED"){
+        if(deviceRole === "kassa"){ pairConnected = true; updateSaleModeUI(); }
+        else if(deviceRole === "terminal"){ pairChannel.send({ type:"broadcast", event:"ping", payload:{} }); }
+      }
+    });
+  }
+
+  function updateSaleModeUI(){
+    $$("#smSwitch button").forEach(b=> b.classList.toggle("active", b.dataset.mode===saleMode));
+    const roleRow = $("#smRoleRow"), statusEl = $("#smStatus"), leaveBtn = $("#smLeaveBtn");
+    const salesBody = $("#salesBody"), termView = $("#terminalView");
+    const modeBar = $("#saleModeBar");
+    const salesToolbar = $("#salesToolbar");
+    const burgerBtn = $("#burgerBtn");
+
+    const appShellEl = $("#appShell");
+
+    if(saleMode === "lokal"){
+      modeBar.classList.remove("hidden");
+      roleRow.classList.add("hidden");
+      statusEl.classList.add("hidden");
+      leaveBtn.classList.add("hidden");
+      salesBody.style.display = "";
+      salesToolbar.classList.remove("hidden");
+      if(burgerBtn) burgerBtn.classList.remove("hidden");
+      termView.classList.remove("active");
+      if(appShellEl) appShellEl.classList.remove("role-terminal");
+      return;
+    }
+    if(!deviceRole){
+      modeBar.classList.remove("hidden");
+      roleRow.classList.remove("hidden");
+      statusEl.classList.add("hidden");
+      leaveBtn.classList.add("hidden");
+      salesBody.style.display = "";
+      salesToolbar.classList.remove("hidden");
+      if(burgerBtn) burgerBtn.classList.remove("hidden");
+      termView.classList.remove("active");
+      if(appShellEl) appShellEl.classList.remove("role-terminal");
+      $("#smRoomInput").value = roomCode;
+      return;
+    }
+    if(deviceRole === "terminal"){
+      // Terminal rejimində satışa aid hər şey (burger menyu, axtarış/barkod
+      // paneli, yeniləmə düyməsi, rejim paneli) gizlədilir — ekranda yalnız
+      // "Terminaldan ayrıl", barkod oxuyucu və məhsul adı axtarışı qalır.
+      modeBar.classList.add("hidden");
+      salesToolbar.classList.add("hidden");
+      if(burgerBtn) burgerBtn.classList.add("hidden");
+      salesBody.style.display = "none";
+      termView.classList.add("active");
+      if(appShellEl) appShellEl.classList.add("role-terminal");
+      return;
+    }
+    modeBar.classList.remove("hidden");
+    salesToolbar.classList.remove("hidden");
+    if(burgerBtn) burgerBtn.classList.remove("hidden");
+    roleRow.classList.add("hidden");
+    statusEl.classList.remove("hidden");
+    leaveBtn.classList.remove("hidden");
+    statusEl.classList.toggle("online", pairConnected);
+    statusEl.classList.toggle("waiting", !pairConnected);
+    $("#smStatusText").textContent = "Kassa" + (pairConnected ? " · qoşuludur" : " · qoşulur...");
+    salesBody.style.display = "";
+    termView.classList.remove("active");
+    if(appShellEl) appShellEl.classList.remove("role-terminal");
+  }
+
+  function setSaleMode(mode){
+    saleMode = mode;
+    localStorage.setItem("pnthr_sale_mode", mode);
+    if(mode === "lokal"){
+      deviceRole = "";
+      localStorage.removeItem("pnthr_device_role");
+      leavePairChannel();
+      stopTerminalScanner();
+    }
+    updateSaleModeUI();
+  }
+
+  function setDeviceRole(role){
+    roomCode = ($("#smRoomInput").value || "").trim();
+    localStorage.setItem("pnthr_room_code", roomCode);
+    deviceRole = role;
+    localStorage.setItem("pnthr_device_role", role);
+    connectPairChannel();
+    updateSaleModeUI();
+    if(role === "terminal") startTerminalScanner(); else stopTerminalScanner();
+  }
+
+  function leaveSaleRole(){
+    deviceRole = "";
+    localStorage.removeItem("pnthr_device_role");
+    leavePairChannel();
+    stopTerminalScanner();
+    updateSaleModeUI();
+  }
+
+  $$("#smSwitch button").forEach(b=> b.addEventListener("click", ()=> setSaleMode(b.dataset.mode)));
+  $("#smRoleKassaBtn").addEventListener("click", ()=> setDeviceRole("kassa"));
+  $("#smRoleTerminalBtn").addEventListener("click", ()=> setDeviceRole("terminal"));
+  $("#smLeaveBtn").addEventListener("click", ()=> leaveSaleRole());
+  $("#terminalExitBtn").addEventListener("click", ()=> leaveSaleRole());
+
+  /* ---------------- TERMİNAL (yalnız barkod oxuma) ---------------- */
+  let terminalScanCooldown = false;
+
+  function terminalDispatch(product, matchedBarcode){
+    terminalSentCount++;
+    if(product){
+      toast(`"${product.name}" kassaya göndərildi`, "ok");
+    } else {
+      toast(`Naməlum barkod (${matchedBarcode||"?"}) kassaya göndərildi`, "err");
+    }
+    if(pairChannel){
+      pairChannel.send({ type:"broadcast", event:"scan", payload:{
+        barcode: matchedBarcode || (product ? product.barcode : "") || "",
+        id: product ? product.id : null,
+        ts: Date.now()
+      }});
+    } else {
+      toast("Kassa ilə əlaqə yoxdur, otaq kodunu yoxlayın", "err");
+    }
+  }
+
+  function sendTerminalScan(barcode){
+    const p = products.find(x=>x.barcode === barcode);
+    terminalDispatch(p, barcode);
+  }
+
+  function renderTerminalSearchResults(q){
+    const box = $("#terminalSearchResults");
+    const query = (q||"").trim().toLocaleLowerCase("az");
+    if(!query){ box.innerHTML = ""; box.classList.remove("show"); return; }
+    const matches = products.filter(p=>
+      p.name.toLocaleLowerCase("az").includes(query) || (p.brand||"").toLocaleLowerCase("az").includes(query)
+    ).slice(0, 8);
+    if(matches.length === 0){
+      box.innerHTML = `<div class="term-search-empty">Nəticə tapılmadı</div>`;
+      box.classList.add("show");
+      return;
+    }
+    box.innerHTML = matches.map(p=>`
+      <button type="button" class="term-search-item" data-id="${p.id}">
+        <span class="tsi-name">${escapeHtml(p.name)}</span>
+        <span class="tsi-price">${p.price.toFixed(2)} ₼</span>
+      </button>`).join("");
+    box.classList.add("show");
+    $$(".term-search-item", box).forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = parseInt(btn.dataset.id);
+        const p = products.find(x=>x.id===id);
+        if(p){
+          scanFeedback();
+          terminalDispatch(p, p.barcode);
+        }
+        $("#terminalSearchInput").value = "";
+        box.innerHTML = "";
+        box.classList.remove("show");
+      });
+    });
+  }
+  $("#terminalSearchInput").addEventListener("input", e=> renderTerminalSearchResults(e.target.value));
+
+  function startTerminalScanner(){
+    if(typeof Html5Qrcode === "undefined"){
+      toast("Kamera skaneri yüklənmədi, internet bağlantınızı yoxlayın", "err");
+      return;
+    }
+    if(terminalScanner) return;
+    $("#terminalScanBox").innerHTML = "";
+    $("#terminalScanBox").classList.remove("paused");
+    terminalScanCooldown = false;
+    terminalScanner = new Html5Qrcode("terminalScanBox");
+    const formats = (typeof Html5QrcodeSupportedFormats !== "undefined") ? [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ] : undefined;
+    const config = Object.assign({ fps: 10, qrbox: { width: 260, height: 160 } }, formats ? { formatsToSupport: formats } : {});
+    terminalScanner.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText)=>{
+        // Oxunandan sonra bir müddət (1.8 san) skaner fasiləyə keçir ki, eyni
+        // barkod bir neçə dəfə ard-arda göndərilməsin — "oxusun, gözləsin,
+        // sonra yenidən oxusun" davranışı üçün.
+        if(terminalScanCooldown) return;
+        terminalScanCooldown = true;
+        scanFeedback();
+        sendTerminalScan(decodedText);
+        const box = $("#terminalScanBox");
+        box.classList.add("paused");
+        try{ if(terminalScanner) terminalScanner.pause(true); }catch(e){}
+        setTimeout(()=>{
+          terminalScanCooldown = false;
+          box.classList.remove("paused");
+          try{ if(terminalScanner) terminalScanner.resume(); }catch(e){}
+        }, 1800);
+      },
+      ()=>{}
+    ).catch(err=>{
+      toast("Kameraya giriş alınmadı: " + (err && err.message ? err.message : err), "err");
+      terminalScanner = null;
+    });
+  }
+
+  function stopTerminalScanner(){
+    terminalScanCooldown = false;
+    const box = $("#terminalScanBox");
+    if(box) box.classList.remove("paused");
+    if(terminalScanner){
+      const s = terminalScanner;
+      terminalScanner = null;
+      s.stop().then(()=> s.clear()).catch(()=>{});
+    }
+  }
 
   /* ---------------- CART ---------------- */
   function addToCart(id){
     const p = products.find(x=>x.id===id);
     if(!p) return;
+    if(p.unit === "ceki"){
+      // Çəki (kg) ilə satılan məhsul — "ədəd" kimi 1 dənə əlavə etmək əvəzinə,
+      // dəqiq çəki daxil etmək üçün modal açılır (məs: 0.900 kg).
+      openWeighModal(id);
+      return;
+    }
     const existing = cart.find(c=>c.id===id);
     const currentQty = existing ? existing.qty : 0;
     if(currentQty >= p.stock){
@@ -2408,7 +3512,7 @@
       return;
     }
     if(existing){ existing.qty += 1; }
-    else { cart.push({ id:p.id, name:p.name, price:p.price, qty:1, stock:p.stock }); }
+    else { cart.push({ id:p.id, name:p.name, price:p.price, qty:1, stock:p.stock, unit:p.unit }); }
     renderCart();
     renderProducts();
   }
@@ -2417,13 +3521,89 @@
     const it = cart.find(c=>c.id===id);
     if(!it) return;
     const p = products.find(x=>x.id===id);
-    const newQty = it.qty + delta;
+    let newQty = it.qty + delta;
+    if(p && p.unit === "ceki") newQty = Math.round(newQty*1000)/1000;
     if(newQty <= 0){ cart = cart.filter(c=>c.id!==id); }
     else if(p && newQty > p.stock){ toast("Stokda bu qədər məhsul yoxdur", "err"); return; }
     else { it.qty = newQty; }
     renderCart();
     renderProducts();
   }
+
+  // Çəki (kg) məhsulları üçün dəqiq miqdar təyin edir (weighModal-dan çağırılır).
+  function setCartWeight(id, qty){
+    const p = products.find(x=>x.id===id);
+    if(!p) return;
+    qty = Math.round((Number(qty)||0)*1000)/1000;
+    if(qty <= 0){
+      cart = cart.filter(c=>c.id!==id);
+      renderCart(); renderProducts();
+      return;
+    }
+    if(qty > p.stock){
+      toast(`"${p.name}" üçün stokda yalnız ${p.stock} kg var`, "err");
+      return;
+    }
+    const existing = cart.find(c=>c.id===id);
+    if(existing){ existing.qty = qty; }
+    else { cart.push({ id:p.id, name:p.name, price:p.price, qty:qty, stock:p.stock, unit:p.unit }); }
+    renderCart();
+    renderProducts();
+  }
+
+  /* ---------------- ÇƏKİ (KG) GİRİŞ MODALI ---------------- */
+  function parseWeighInput(){
+    return parseFloat((($("#weighQtyInput").value)||"0").toString().replace(",", ".")) || 0;
+  }
+  function updateWeighTotal(){
+    const p = products.find(x=>x.id===pendingWeighProductId);
+    const v = parseWeighInput();
+    $("#weighTotalLine").textContent = (v*(p?p.price:0)).toFixed(2)+" ₼";
+  }
+  function openWeighModal(id){
+    const p = products.find(x=>x.id===id);
+    if(!p) return;
+    pendingWeighProductId = id;
+    const existing = cart.find(c=>c.id===id);
+    const startQty = existing ? existing.qty : 1;
+    $("#weighModalTitle").textContent = "Çəki daxil et — " + p.name;
+    $("#weighQtyInput").value = startQty.toFixed(3);
+    $("#weighQuickRow").innerHTML = [0.25,0.5,1,2,3,5].map(v=>`<button type="button" class="weigh-quick-btn" data-v="${v}">${v} kg</button>`).join("");
+    $$(".weigh-quick-btn", $("#weighQuickRow")).forEach(b=>{
+      b.addEventListener("click", ()=>{
+        $("#weighQtyInput").value = parseFloat(b.dataset.v).toFixed(3);
+        updateWeighTotal();
+      });
+    });
+    updateWeighTotal();
+    openModal("weighModal");
+    setTimeout(()=>{ $("#weighQtyInput").focus(); $("#weighQtyInput").select(); }, 50);
+  }
+  $("#weighQtyInput").addEventListener("input", updateWeighTotal);
+  $("#weighQtyInput").addEventListener("keydown", e=>{
+    if(e.key === "Enter"){ e.preventDefault(); $("#weighConfirmBtn").click(); }
+  });
+  $("#weighMinusBtn").addEventListener("click", ()=>{
+    let v = Math.max(0, Math.round((parseWeighInput()-0.1)*1000)/1000);
+    $("#weighQtyInput").value = v.toFixed(3);
+    updateWeighTotal();
+  });
+  $("#weighPlusBtn").addEventListener("click", ()=>{
+    let v = Math.round((parseWeighInput()+0.1)*1000)/1000;
+    $("#weighQtyInput").value = v.toFixed(3);
+    updateWeighTotal();
+  });
+  $("#weighConfirmBtn").addEventListener("click", ()=>{
+    const v = parseWeighInput();
+    if(v <= 0){ toast("Çəki daxil edin", "err"); return; }
+    const p = products.find(x=>x.id===pendingWeighProductId);
+    setCartWeight(pendingWeighProductId, v);
+    closeModal("weighModal");
+    if(pendingWeighAnnounce && p){
+      toast(`"${p.name}" (${v.toFixed(3)} kg) səbətə əlavə olundu`, "ok");
+    }
+    pendingWeighAnnounce = false;
+  });
 
   function removeItem(id){
     cart = cart.filter(c=>c.id!==id);
@@ -2442,24 +3622,35 @@
         <span>Səbət boşdur — məhsul üzərinə klikləyin</span>
       </div>`;
     } else {
-      itemsEl.innerHTML = cart.map(c=>`
+      itemsEl.innerHTML = cart.map(c=>{
+        const isCeki = c.unit === "ceki";
+        const step = isCeki ? 0.1 : 1;
+        const qtyDisplay = isCeki ? c.qty.toFixed(3)+" kg" : c.qty;
+        const priceLine = isCeki
+          ? `${c.price.toFixed(2)} ₼/kg × ${c.qty.toFixed(3)} kg`
+          : `${c.price.toFixed(2)} ₼ × ${c.qty}`;
+        return `
         <div class="cart-item">
           <div class="ci-info">
             <div class="ci-name">${escapeHtml(c.name)}</div>
-            <div class="ci-price">${c.price.toFixed(2)} ₼ × ${c.qty}</div>
+            <div class="ci-price">${priceLine}</div>
           </div>
           <div class="ci-qty">
-            <button data-act="dec" data-id="${c.id}">−</button>
-            <span>${c.qty}</span>
-            <button data-act="inc" data-id="${c.id}">+</button>
+            <button data-act="dec" data-id="${c.id}" data-step="${step}">−</button>
+            <span ${isCeki?`class="ci-qty-edit" data-act="edit" data-id="${c.id}"`:""}>${qtyDisplay}</span>
+            <button data-act="inc" data-id="${c.id}" data-step="${step}">+</button>
           </div>
           <button class="ci-remove" data-act="rm" data-id="${c.id}">
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </button>
-        </div>`).join("");
+        </div>`;
+      }).join("");
 
       $$('.ci-qty button', itemsEl).forEach(b=>{
-        b.addEventListener("click", ()=> changeQty(parseInt(b.dataset.id), b.dataset.act==="inc"?1:-1));
+        b.addEventListener("click", ()=> changeQty(parseInt(b.dataset.id), (b.dataset.act==="inc"?1:-1) * (parseFloat(b.dataset.step)||1)));
+      });
+      $$('.ci-qty-edit', itemsEl).forEach(sp=>{
+        sp.addEventListener("click", ()=> openWeighModal(parseInt(sp.dataset.id)));
       });
       $$('.ci-remove', itemsEl).forEach(b=>{
         b.addEventListener("click", ()=> removeItem(parseInt(b.dataset.id)));
@@ -2505,7 +3696,8 @@
     if(cart.length === 0) return;
     closeCartSheetInstant();
     const total = round2(cartTotal());
-    paymentState = { total, remaining: total, cashPaid: 0, cardPaid: 0, currentMethod: "cash" };
+    paymentState = { total, remaining: total, cashPaid: 0, cardPaid: 0, debtPaid: 0, currentMethod: "cash" };
+    pvSelectedCustomer = null;
     renderPaymentView();
     goToView("payment");
   });
@@ -2532,19 +3724,21 @@
     const breakdown = [];
     if(ps.cashPaid > 0) breakdown.push(`<div class="pv-paid-row"><span>Nağd ödənilib</span><b>${fmt(ps.cashPaid)}</b><button class="pv-paid-x" data-undo="cash" title="Ləğv et"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>`);
     if(ps.cardPaid > 0) breakdown.push(`<div class="pv-paid-row"><span>Kartla ödənilib</span><b>${fmt(ps.cardPaid)}</b><button class="pv-paid-x" data-undo="card" title="Ləğv et"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>`);
+    if(ps.debtPaid > 0) breakdown.push(`<div class="pv-paid-row"><span>Borc yazılıb</span><b>${fmt(ps.debtPaid)}</b><button class="pv-paid-x" data-undo="debt" title="Ləğv et"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>`);
     $("#pvPaidBreakdown").innerHTML = breakdown.join("");
     $$("[data-undo]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const method = btn.dataset.undo;
         const p2 = paymentState;
         if(method === "cash"){ p2.remaining = round2(p2.remaining + p2.cashPaid); p2.cashPaid = 0; }
-        else { p2.remaining = round2(p2.remaining + p2.cardPaid); p2.cardPaid = 0; }
+        else if(method === "card"){ p2.remaining = round2(p2.remaining + p2.cardPaid); p2.cardPaid = 0; }
+        else { p2.remaining = round2(p2.remaining + p2.debtPaid); p2.debtPaid = 0; }
         toast("Ödəniş ləğv edildi", "info");
         renderPaymentView();
       });
     });
 
-    setMethod(ps.currentMethod, "0");
+    setMethod(ps.currentMethod, ps.currentMethod==="debt" ? String(ps.remaining) : "0");
     renderQuickAmounts();
   }
 
@@ -2552,11 +3746,21 @@
     paymentState.currentMethod = method;
     $("#tabCash").classList.toggle("active", method==="cash");
     $("#tabCard").classList.toggle("active", method==="card");
+    $("#tabDebt").classList.toggle("active", method==="debt");
+    $("#pvCustomerBox").classList.toggle("hidden", method!=="debt");
+    $("#payBtn").innerHTML = method==="debt"
+      ? '<svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Borc yaz'
+      : '<svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Ödə';
     $("#amountInput").value = amountValue !== undefined ? amountValue : "0";
+    if(method === "debt"){
+      renderPvCustomerBox();
+      ensureCustomersLoaded().then(()=> renderPvCustomerBox());
+    }
   }
 
   $("#tabCash").addEventListener("click", ()=> setMethod("cash", "0"));
   $("#tabCard").addEventListener("click", ()=> setMethod("card", "0"));
+  $("#tabDebt").addEventListener("click", ()=> setMethod("debt", String(paymentState.remaining)));
 
   function renderQuickAmounts(){
     const rem = paymentState.remaining;
@@ -2607,7 +3811,7 @@
         toast(`Qalan ${fmt(ps.remaining)} qaldı`, "info");
         renderPaymentView();
       }
-    } else {
+    } else if(ps.currentMethod === "card"){
       if(amt >= ps.remaining - 0.001){
         ps.cardPaid = round2(ps.cardPaid + ps.remaining);
         ps.remaining = 0;
@@ -2618,11 +3822,25 @@
         toast(`Kartla daha ${fmt(ps.remaining)} qalır`, "info");
         renderPaymentView();
       }
+    } else {
+      // Borc (veresiyə)
+      if(!pvSelectedCustomer){ toast("Əvvəlcə müştəri seçin", "err"); return; }
+      const applied = Math.min(amt, ps.remaining);
+      if(applied <= 0){ toast("Düzgün məbləğ daxil edin", "err"); return; }
+      ps.debtPaid = round2((ps.debtPaid||0) + applied);
+      ps.remaining = round2(ps.remaining - applied);
+      if(ps.remaining <= 0.001){
+        finishSale(0);
+      } else {
+        toast(`Qalan ${fmt(ps.remaining)} qaldı`, "info");
+        renderPaymentView();
+      }
     }
   }
 
   async function finishSale(change){
     const ps = paymentState;
+    const debtCustomer = pvSelectedCustomer;
     $("#successTime").textContent = new Date().toLocaleString("az-AZ", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     $("#receiptList").innerHTML = cart.map(c=>`
       <div class="receipt-row"><b>${escapeHtml(c.name)} × ${c.qty}</b><span>${fmt(c.price*c.qty)}</span></div>
@@ -2632,6 +3850,7 @@
     const rows = [];
     if(ps.cashPaid > 0) rows.push(`<div class="receipt-pay-line"><span>Nağd</span><b>${fmt(ps.cashPaid)}</b></div>`);
     if(ps.cardPaid > 0) rows.push(`<div class="receipt-pay-line"><span>Kart</span><b>${fmt(ps.cardPaid)}</b></div>`);
+    if(ps.debtPaid > 0) rows.push(`<div class="receipt-pay-line debt"><span>Borc${debtCustomer ? " · " + escapeHtml(((debtCustomer.name||"")+" "+(debtCustomer.surname||"")).trim()) : ""}</span><b>${fmt(ps.debtPaid)}</b></div>`);
     if(change > 0.004) rows.push(`<div class="receipt-pay-line"><span>Qaytarılan qalıq (nağd)</span><b>${fmt(change)}</b></div>`);
     $("#receiptPayBreakdown").innerHTML = rows.join("");
 
@@ -2641,6 +3860,7 @@
     renderCart();
     renderProducts();
     goToView("success");
+    pvSelectedCustomer = null;
 
     for(const c of soldItems){
       const p = products.find(x=>x.id===c.id);
@@ -2654,15 +3874,39 @@
     // Satışı tarixçəyə (sales cədvəlinə) yaz — "Onlayn satış" bölməsində izlənilsin
     try{
       const itemsPayload = soldItems.map(c=>({ id:c.id, name:c.name, qty:c.qty, price:c.price, total: round2(c.price*c.qty) }));
-      const { error: saleErr } = await sb.from("sales").insert({
+      const { data: saleRow, error: saleErr } = await sb.from("sales").insert({
         cashier: currentUsername || null,
         items: itemsPayload,
         total: ps.total,
         cash_paid: ps.cashPaid,
         card_paid: ps.cardPaid,
+        debt_paid: ps.debtPaid || 0,
+        customer_id: debtCustomer ? debtCustomer.id : null,
+        customer_name: debtCustomer ? ((debtCustomer.name||"")+" "+(debtCustomer.surname||"")).trim() : null,
         change_amount: change || 0
-      });
+      }).select().single();
       if(saleErr){ toast("Satış tarixçəsinə yazılmadı: " + saleErr.message, "err"); }
+
+      // Borc yazılıbsa müştərinin ümumi borcunu artır və əməliyyat tarixçəsinə əlavə et
+      if(ps.debtPaid > 0 && debtCustomer){
+        const newDebt = round2((Number(debtCustomer.debt)||0) + ps.debtPaid);
+        const { error: custErr } = await sb.from("customers").update({ debt: newDebt }).eq("id", debtCustomer.id);
+        if(custErr){
+          toast("Müştəri borcu yenilənmədi: " + custErr.message, "err");
+        } else {
+          const cRef = customers.find(x=>x.id===debtCustomer.id);
+          if(cRef) cRef.debt = newDebt;
+        }
+        try{
+          await sb.from("customer_transactions").insert({
+            customer_id: debtCustomer.id,
+            type: "debt",
+            amount: ps.debtPaid,
+            note: "Satışdan borc",
+            sale_id: (saleRow && saleRow.id) ? saleRow.id : null
+          });
+        }catch(e){ /* tarixçə yazıla bilmədi, satışın özünə mane olmasın */ }
+      }
     }catch(e){ /* tarixçə yazıla bilmədi, satışın özünə mane olmasın */ }
   }
 
@@ -2732,7 +3976,9 @@
     const q = osSearchQuery.trim().toLocaleLowerCase("az");
     const effectiveType = osPickForReturn ? "sale" : osFilterType;
     let list = combinedOsEntries();
-    if(effectiveType !== "all"){
+    if(effectiveType === "debt"){
+      list = list.filter(s=> s._type === "sale" && (Number(s.debt_paid)||0) > 0.004);
+    } else if(effectiveType !== "all"){
       list = list.filter(s=> s._type === effectiveType);
     }
     if(q){
@@ -2742,8 +3988,9 @@
       });
     }
     if(list.length === 0){
-      const emptyLabel = effectiveType === "return" ? "iadə" : "satış";
-      osList.innerHTML = `<div class="empty-state">${iconSvg()}<b>${effectiveType === "return" ? "İadə" : "Satış"} tapılmadı</b><span>${q ? `Axtarışa uyğun ${emptyLabel} yoxdur.` : `Hələ heç bir ${emptyLabel} edilməyib.`}</span></div>`;
+      const emptyLabel = effectiveType === "return" ? "iadə" : effectiveType === "debt" ? "borc" : "satış";
+      const emptyTitle = effectiveType === "return" ? "İadə" : effectiveType === "debt" ? "Borc" : "Satış";
+      osList.innerHTML = `<div class="empty-state">${iconSvg()}<b>${emptyTitle} tapılmadı</b><span>${q ? `Axtarışa uyğun ${emptyLabel} yoxdur.` : `Hələ heç bir ${emptyLabel} edilməyib.`}</span></div>`;
       return;
     }
     osList.innerHTML = list.map((s, idx)=>{
@@ -2753,12 +4000,13 @@
       const dt = new Date(s.created_at);
       const dateStr = dt.toLocaleString("az-AZ", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
       const saleNo = s.id ? ("#" + String(s.id).padStart(4,"0")) : "#—";
+      const hasDebt = !isReturn && (Number(s.debt_paid)||0) > 0.004;
       return `
       <button class="os-card ${isReturn ? "is-return" : ""}" data-idx="${idx}">
         <div class="os-icon">${isReturn ? returnIconSvg() : '<svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'}</div>
         <div class="os-info">
-          <div class="os-no">${isReturn ? "İadə " : ""}${saleNo} ${s.cashier ? "· " + escapeHtml(s.cashier) : ""}</div>
-          <div class="os-meta"><span>${dateStr}</span>${isReturn && s.sale_id ? `<span>Fiş #${String(s.sale_id).padStart(4,"0")}</span>` : ""}</div>
+          <div class="os-no">${isReturn ? "İadə " : ""}${saleNo} ${s.cashier ? "· " + escapeHtml(s.cashier) : ""}${hasDebt ? '<span class="os-debt-badge">Borc</span>' : ""}</div>
+          <div class="os-meta"><span>${dateStr}</span>${isReturn && s.sale_id ? `<span>Fiş #${String(s.sale_id).padStart(4,"0")}</span>` : ""}${hasDebt && s.customer_name ? `<span>${escapeHtml(s.customer_name)}</span>` : ""}</div>
         </div>
         <div class="os-right">
           <div class="os-total">${isReturn ? "-" : ""}${fmt(Number(s.total)||0)}</div>
@@ -2810,6 +4058,7 @@
     const payRows = [];
     if(Number(sale.cash_paid) > 0) payRows.push(`<div class="fis-pay-row"><span>Nağd</span><span>${fmt(Number(sale.cash_paid))}</span></div>`);
     if(Number(sale.card_paid) > 0) payRows.push(`<div class="fis-pay-row"><span>Kart</span><span>${fmt(Number(sale.card_paid))}</span></div>`);
+    if(Number(sale.debt_paid) > 0) payRows.push(`<div class="fis-pay-row debt"><span>Borc${sale.customer_name ? " · " + escapeHtml(sale.customer_name) : ""}</span><span>${fmt(Number(sale.debt_paid))}</span></div>`);
     if(Number(sale.change_amount) > 0.004) payRows.push(`<div class="fis-pay-row"><span>Qaytarılan</span><span>${fmt(Number(sale.change_amount))}</span></div>`);
 
     $("#fisWrap").innerHTML = `
@@ -3622,7 +4871,7 @@
         <div class="apc-name">${escapeHtml(p.name)}</div>
         ${p.barcode?`<div class="apc-barcode">${escapeHtml(p.barcode)}</div>`:""}
         <div class="apc-row">
-          <span class="apc-qty ${isLow?'low':''}">${p.quantity||0} ədəd</span>
+          <span class="apc-qty ${isLow?'low':''}">${p.quantity||0} ${unitLabel(p.unit)}</span>
           <div class="apc-prices">
             <span class="buy">Alış: ${(Number(p.purchase_price)||0).toFixed(2)}₼</span>
             <span class="sell">${(Number(p.sale_price)||0).toFixed(2)}₼</span>
@@ -3680,7 +4929,8 @@
       barcode: p.barcode || "",
       purchase_price: Number(p.purchase_price)||0,
       sale_price: Number(p.sale_price)||0,
-      quantity: Number(p.quantity)||0
+      quantity: Number(p.quantity)||0,
+      unit: p.unit || "eded"
     }));
 
     renderStokTable();
@@ -3721,7 +4971,7 @@
         <td class="st-mono">${p.barcode ? escapeHtml(p.barcode) : "—"}</td>
         <td class="st-mono">${p.purchase_price.toFixed(2)} ₼</td>
         <td class="st-sell">${p.sale_price.toFixed(2)} ₼</td>
-        <td class="st-qty ${isLow?'low':''}">${p.quantity} ədəd</td>
+        <td class="st-qty ${isLow?'low':''}">${p.quantity} ${unitLabel(p.unit)}</td>
       </tr>`;
     }).join("");
   }
@@ -3869,14 +5119,14 @@
           <div class="mpr-meta">
             ${p.brand?`<span>${escapeHtml(p.brand)}</span>`:""}
             ${p.barcode?`<span>${escapeHtml(p.barcode)}</span>`:""}
-            <span>Mövcud: ${p.quantity||0} əd</span>
+            <span>Mövcud: ${p.quantity||0} ${unitLabelShort(p.unit)}</span>
           </div>
         </div>
         <div class="mpr-buy">Alış: ${(Number(p.purchase_price)||0).toFixed(2)}₼</div>
         <div class="mpr-qty">
-          <button type="button" data-qstep="-1">−</button>
-          <input type="number" min="0" step="1" inputmode="numeric" value="${qty}" data-qinput>
-          <button type="button" data-qstep="1">+</button>
+          <button type="button" data-qstep="${p.unit==='ceki'?'-0.1':'-1'}">−</button>
+          <input type="number" min="0" step="${p.unit==='ceki'?'0.001':'1'}" inputmode="decimal" value="${qty}" data-qinput>
+          <button type="button" data-qstep="${p.unit==='ceki'?'0.1':'1'}">+</button>
         </div>
         <div class="mpr-line-total" data-line>${lineTotal.toFixed(2)}₼</div>
       </div>`;
@@ -3888,8 +5138,11 @@
       const input = row.querySelector("[data-qinput]");
       const lineEl = row.querySelector("[data-line]");
 
+      const isCeki = product && product.unit === "ceki";
+
       function setQty(v){
-        const val = Math.max(0, Math.floor(Number(v))||0);
+        let val = Math.max(0, Number(v)||0);
+        val = isCeki ? Math.round(val*1000)/1000 : Math.floor(val);
         malReceiveQty[id] = val;
         input.value = val;
         const lt = val * (Number(product.purchase_price)||0);
@@ -3900,7 +5153,7 @@
 
       row.querySelectorAll("[data-qstep]").forEach(btn=>{
         btn.addEventListener("click", ()=>{
-          const step = parseInt(btn.dataset.qstep);
+          const step = parseFloat(btn.dataset.qstep);
           setQty((malReceiveQty[id]||0) + step);
         });
       });
@@ -3920,7 +5173,7 @@
   /* ---------------- BASILI TUTUB STOKA ÇƏK (5 saniyə hold) ---------------- */
   const malBtn = $("#malStokaCekBtn");
   const malHoldProgressEl = $("#malHoldProgress");
-  const MAL_HOLD_MS = 5000;
+  const MAL_HOLD_MS = 3000;
   let malHoldRAF = null;
   let malHoldStart = 0;
   let malHoldBusy = false;
@@ -3981,7 +5234,27 @@
       }
 
       const total = computeMalTotal();
-      generateReceiptPNG(malCari ? malCari.name : "Cari", items, total);
+      const cariName = malCari ? malCari.name : "Cari";
+      const docMeta = buildDocMeta();
+
+      const historyItems = items.map(it=>({
+        name: it.product.name,
+        barcode: it.product.barcode || "",
+        purchase_price: Number(it.product.purchase_price)||0,
+        unit: it.product.unit || "eded",
+        qty: it.qty
+      }));
+      const { error: histErr } = await sb.from("mal_qebulu_tarixce").insert({
+        cari_id: malCari ? malCari.id : null,
+        cari_name: cariName,
+        items: historyItems,
+        total: total,
+        doc_no: docMeta.docNo,
+        created_at: docMeta.createdAt
+      });
+      if(histErr){ console.warn("Mal qəbulu tarixçəyə yazılmadı:", histErr.message); }
+
+      generateReceiptPNG(cariName, items, total, docMeta);
 
       toast("Stok yeniləndi, qəbul sənədi hazırdır", "ok");
       malReceiveQty = {};
@@ -4012,7 +5285,12 @@
   let lastReceiptDataUrl = null;
   let lastReceiptFilename = "mal-qebulu.png";
 
-  function generateReceiptPNG(cariName, items, total){
+  function buildDocMeta(){
+    const now = new Date();
+    return { docNo: "MQ-" + now.getTime().toString().slice(-8), createdAt: now.toISOString() };
+  }
+
+  function generateReceiptPNG(cariName, items, total, meta){
     // A4 portret ölçüsü (~150dpi): 1240 x 1754 px
     const pageW = 1240, pageH = 1754;
     const marginX = 70, marginTop = 70, marginBottom = 70;
@@ -4045,9 +5323,9 @@
     ctx.font = "600 13px Arial, sans-serif";
     ctx.fillText("POS & ERP SİSTEMİ", marginX, marginTop+52);
 
-    const now = new Date();
+    const now = (meta && meta.createdAt) ? new Date(meta.createdAt) : new Date();
     const dateStr = now.toLocaleDateString("az-AZ") + "   " + now.toLocaleTimeString("az-AZ",{hour:"2-digit",minute:"2-digit"});
-    const docNo = "MQ-" + now.getTime().toString().slice(-8);
+    const docNo = (meta && meta.docNo) || ("MQ-" + now.getTime().toString().slice(-8));
 
     ctx.textAlign = "right";
     ctx.fillStyle = "#14171d";
@@ -4115,7 +5393,7 @@
       ctx.textAlign = "right";
       ctx.fillStyle = "#14171d";
       ctx.font = "600 "+fBase+"px 'IBM Plex Mono', monospace";
-      ctx.fillText(it.qty + " əd", marginX+760, midY);
+      ctx.fillText(it.qty + " " + unitLabelShort(p.unit), marginX+760, midY);
 
       ctx.fillStyle = "#4b5563";
       ctx.font = "400 "+fBase+"px 'IBM Plex Mono', monospace";
@@ -4179,6 +5457,87 @@
     a.remove();
   });
 
+  /* =========================================================
+     MAL QƏBULU — KEÇMİŞ (tarixə görə qruplaşdırılmış sənəd siyahısı)
+  ========================================================= */
+  function dateGroupLabel(d){
+    const dt = new Date(d);
+    const now = new Date();
+    const startOfDay = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(dt)) / 86400000);
+    if(diffDays === 0) return "Bu gün";
+    if(diffDays === 1) return "Dünən";
+    return dt.toLocaleDateString("az-AZ", { day:"2-digit", month:"long", year:"numeric" });
+  }
+
+  async function loadMalHistoryView(){
+    const listEl = $("#malHistoryList");
+    listEl.innerHTML = `<div class="empty-state"><div class="spin light"></div><b>Yüklənir...</b><span>Mal qəbulu tarixçəsi Supabase-dən gətirilir</span></div>`;
+    const { data, error } = await sb.from("mal_qebulu_tarixce").select("*").order("created_at",{ascending:false}).limit(300);
+    if(error){
+      listEl.innerHTML = `<div class="empty-state">${iconSvg()}<b>Tarixçə yüklənmədi</b><span>${escapeHtml(error.message)}. Supabase-də "mal_qebulu_tarixce" cədvəlinin yaradıldığından əmin olun.</span></div>`;
+      return;
+    }
+    malHistoryData = data || [];
+    renderMalHistoryList();
+  }
+
+  function renderMalHistoryList(){
+    const listEl = $("#malHistoryList");
+    if(malHistoryData.length === 0){
+      listEl.innerHTML = `<div class="empty-state">${iconSvg()}<b>Hələ mal qəbulu edilməyib</b><span>Stoka mal qəbul etdikdə sənədlər burada tarixə görə görünəcək.</span></div>`;
+      return;
+    }
+    let lastLabel = null;
+    let html = "";
+    malHistoryData.forEach((r, idx)=>{
+      const label = dateGroupLabel(r.created_at);
+      if(label !== lastLabel){
+        html += `<div class="os-date-heading">${label}</div>`;
+        lastLabel = label;
+      }
+      const items = Array.isArray(r.items) ? r.items : [];
+      const itemCount = items.reduce((s,it)=> s + (Number(it.qty)||0), 0);
+      const dt = new Date(r.created_at);
+      const timeStr = dt.toLocaleTimeString("az-AZ",{hour:"2-digit",minute:"2-digit"});
+      html += `
+      <button class="os-card" data-idx="${idx}">
+        <div class="os-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div class="os-info">
+          <div class="os-no">${escapeHtml(r.cari_name || "Cari")}${r.doc_no ? " · " + escapeHtml(r.doc_no) : ""}</div>
+          <div class="os-meta"><span>${timeStr}</span></div>
+        </div>
+        <div class="os-right">
+          <div class="os-total">${fmt(Number(r.total)||0)}</div>
+          <div class="os-count">${itemCount} əd</div>
+        </div>
+        <div class="os-chevron"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </button>`;
+    });
+    listEl.innerHTML = html;
+
+    $$(".os-card", listEl).forEach(card=>{
+      card.addEventListener("click", ()=>{
+        const idx = Number(card.dataset.idx);
+        const r = malHistoryData[idx];
+        if(!r) return;
+        openMalHistoryReceipt(r);
+      });
+    });
+  }
+
+  function openMalHistoryReceipt(r){
+    const items = (Array.isArray(r.items) ? r.items : []).map(it=>({
+      product: { name: it.name, barcode: it.barcode, purchase_price: it.purchase_price, unit: it.unit },
+      qty: it.qty
+    }));
+    generateReceiptPNG(r.cari_name || "Cari", items, Number(r.total)||0, { docNo: r.doc_no, createdAt: r.created_at });
+  }
+
+  $("#malHistoryBtn").addEventListener("click", ()=>{ goToView("mal-history"); loadMalHistoryView(); });
+  $("#malHistoryBackBtn").addEventListener("click", ()=> goToView("mal-cari"));
+  $("#malHistoryRefreshBtn").addEventListener("click", loadMalHistoryView);
+
 
   /* =========================================================
      ANBAR — Supabase-dən cari siyahısını yükləmə
@@ -4194,10 +5553,12 @@
   /* ---- product add modal ---- */
   const imgUploadZone = $("#imgUploadZone");
   const productImageInput = $("#productImageInput");
+  const productImageCameraInput = $("#productImageCameraInput");
   const imgPreview = $("#imgPreview");
   const imgUploadEmpty = $("#imgUploadEmpty");
   const bgChoice = $("#bgChoice");
   const bgColorRow = $("#bgColorRow");
+  let selectedProductUnit = "eded"; // "eded" | "ceki"
 
   function resetBgColorPicker(){
     selectedBgColor = "transparent";
@@ -4211,8 +5572,10 @@
     productImageInput.click();
   });
 
-  productImageInput.addEventListener("change", ()=>{
-    const file = productImageInput.files[0];
+  $("#imgGalleryBtn").addEventListener("click", ()=> productImageInput.click());
+  $("#imgCameraBtn").addEventListener("click", ()=> productImageCameraInput.click());
+
+  function handleProductImageFile(file){
     if(!file) return;
     selectedProductFile = file;
     const reader = new FileReader();
@@ -4224,6 +5587,16 @@
       bgChoice.classList.remove("hidden");
     };
     reader.readAsDataURL(file);
+  }
+
+  productImageInput.addEventListener("change", ()=>{
+    handleProductImageFile(productImageInput.files[0]);
+    productImageCameraInput.value = "";
+  });
+
+  productImageCameraInput.addEventListener("change", ()=>{
+    handleProductImageFile(productImageCameraInput.files[0]);
+    productImageInput.value = "";
   });
 
   $("#imgClearBtn").addEventListener("click", (e)=>{
@@ -4231,6 +5604,7 @@
     selectedProductFile = null;
     selectedBgMode = "keep";
     productImageInput.value = "";
+    productImageCameraInput.value = "";
     imgPreview.src = ""; imgPreview.classList.add("hidden");
     imgUploadEmpty.classList.remove("hidden");
     $("#imgClearBtn").classList.add("hidden");
@@ -4238,6 +5612,14 @@
     $$(".bg-opt").forEach(b=>b.classList.remove("active"));
     $('.bg-opt[data-bg="keep"]').classList.add("active");
     resetBgColorPicker();
+  });
+
+  $$(".unit-opt").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      selectedProductUnit = btn.dataset.unit;
+      $$(".unit-opt").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+    });
   });
 
   $$(".bg-opt").forEach(btn=>{
@@ -4267,6 +5649,89 @@
     $("#bgSwatchCustom").classList.add("active");
   });
 
+  /* ---------------- BARKODA GÖRƏ MƏHSUL AXTARIŞI (Open Food/Beauty/Products Facts + UPCItemDB) ----------------
+     Anbarda yeni məhsul əlavə edərkən barkod daxil olunanda (kamera ilə skan və ya
+     əl ilə yazıb sahədən çıxanda), əgər "Ürün ismi" boşdursa, açıq beynəlxalq
+     barkod verilənlər bazalarından (açarsız, pulsuz) marka və məhsul adını
+     avtomatik tapıb doldurmağa çalışırıq. İstifadəçinin özü yazdığı məlumatın
+     üstündən keçmirik — sahələr boş olduqda işə düşür. */
+  const BARCODE_LOOKUP_SOURCES = [
+    { name: "Open Food Facts", url: b => `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(b)}.json?fields=product_name,product_name_en,generic_name,brands` },
+    { name: "Open Beauty Facts", url: b => `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(b)}.json?fields=product_name,product_name_en,generic_name,brands` },
+    { name: "Open Products Facts", url: b => `https://world.openproductsfacts.org/api/v2/product/${encodeURIComponent(b)}.json?fields=product_name,product_name_en,generic_name,brands` }
+  ];
+
+  async function lookupProductByBarcodeOnline(barcode){
+    for(const src of BARCODE_LOOKUP_SOURCES){
+      try{
+        const res = await fetchWithTimeout(src.url(barcode), {}, 6000, 0);
+        if(!res || !res.ok) continue;
+        const json = await res.json();
+        if(json && Number(json.status) === 1 && json.product){
+          const p = json.product;
+          const rawName = (p.product_name || p.product_name_en || p.generic_name || "").trim();
+          const rawBrand = (p.brands || "").split(",")[0].trim();
+          if(rawName || rawBrand) return { source: src.name, name: rawName, brand: rawBrand };
+        }
+      }catch(e){ /* bu mənbədən tapılmadı — növbətini sına */ }
+    }
+    // Ehtiyat mənbə: UPCItemDB (açarsız trial endpoint, gündəlik limitli)
+    try{
+      const res = await fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`, {}, 6000, 0);
+      if(res && res.ok){
+        const json = await res.json();
+        const it = json && json.items && json.items[0];
+        if(it){
+          const rawName = (it.title || "").trim();
+          const rawBrand = (it.brand || "").trim();
+          if(rawName || rawBrand) return { source: "UPCItemDB", name: rawName, brand: rawBrand };
+        }
+      }
+    }catch(e){ /* CORS/şəbəkə xətası ola bilər — səssizcə keç */ }
+    return null;
+  }
+
+  // Ad markanın təkrarı ilə başlayırsa ("Winston Castel Compact" + marka "Winston")
+  // markanı adın əvvəlindən çıxarır ki, sahələrdə təkrar olmasın.
+  function stripBrandFromName(name, brand){
+    if(!name) return "";
+    if(brand && name.toLowerCase().startsWith(brand.toLowerCase())){
+      const rest = name.slice(brand.length).trim().replace(/^[-–,:]+\s*/, "");
+      return rest || name;
+    }
+    return name;
+  }
+
+  let barcodeLookupToken = 0;
+  async function tryAutoFillProductFromBarcode(barcode){
+    barcode = (barcode || "").trim();
+    if(!barcode) return;
+    const nameField = $("#pName"), brandField = $("#pBrand");
+    if(nameField.value.trim()) return; // ad artıq yazılıbsa toxunmuruq
+    const myToken = ++barcodeLookupToken;
+    const oldPlaceholder = nameField.placeholder;
+    nameField.placeholder = "Barkoda görə axtarılır...";
+    try{
+      const found = await lookupProductByBarcodeOnline(barcode);
+      if(myToken !== barcodeLookupToken) return; // istifadəçi bu aralıqda başqa barkod yazıb/dəyişib
+      if(found){
+        if(found.brand && !brandField.value.trim()) brandField.value = found.brand;
+        const cleanedName = stripBrandFromName(found.name, found.brand);
+        if(cleanedName && !nameField.value.trim()) nameField.value = cleanedName;
+        if(cleanedName || found.brand) toast(`Məhsul tapıldı (${found.source})`, "ok");
+      }
+    }catch(e){
+      /* internet olmaya bilər — sükutla keç, istifadəçi əl ilə yazsın */
+    } finally {
+      if(myToken === barcodeLookupToken) nameField.placeholder = oldPlaceholder;
+    }
+  }
+
+  $("#pBarcode").addEventListener("change", ()=> tryAutoFillProductFromBarcode($("#pBarcode").value));
+  $("#pBarcode").addEventListener("keydown", (e)=>{
+    if(e.key === "Enter"){ e.preventDefault(); tryAutoFillProductFromBarcode($("#pBarcode").value); }
+  });
+
   $("#addProductBtn").addEventListener("click", ()=>{
     if(!currentCari) return;
     if(!canDo("anbar_manage")){ toast("Bu əməliyyat üçün icazəniz yoxdur", "err"); return; }
@@ -4275,10 +5740,17 @@
   });
 
   function resetProductForm(){
+    barcodeLookupToken++; // əvvəlki gedən barkod axtarışını ləğv et
     $("#pBrand").value = ""; $("#pName").value = "";
+    $("#pName").placeholder = "Məhsul adı";
     $("#pBarcode").value = ""; $("#pBuy").value = "0"; $("#pSell").value = "0";
+    $("#pStock").value = "0";
     selectedProductFile = null; selectedBgMode = "keep";
+    selectedProductUnit = "eded";
+    $$(".unit-opt").forEach(b=>b.classList.remove("active"));
+    $('.unit-opt[data-unit="eded"]').classList.add("active");
     productImageInput.value = "";
+    productImageCameraInput.value = "";
     imgPreview.src = ""; imgPreview.classList.add("hidden");
     imgUploadEmpty.classList.remove("hidden");
     $("#imgClearBtn").classList.add("hidden");
@@ -4298,14 +5770,20 @@
   }
 
   async function removeImageBackground(file){
+    if(!BG_REMOVER_KEY){ throw new Error("RemoveBackground API açarı yüklənməyib — şirkət hesabında #RemoveBackground bölməsi yoxdur və ya sessiya köhnədir."); }
     const formData = new FormData();
     formData.append("image_file", file);
     formData.append("size", "auto");
-    const res = await fetch("https://api.remove.bg/v1.0/removebg", {
-      method: "POST",
-      headers: { "X-Api-Key": BG_REMOVER_KEY },
-      body: formData
-    });
+    let res;
+    try{
+      res = await fetchWithTimeout("https://api.remove.bg/v1.0/removebg", {
+        method: "POST",
+        headers: { "X-Api-Key": BG_REMOVER_KEY },
+        body: formData
+      }, 20000, 1);
+    }catch(netErr){
+      throw new Error("RemoveBackground-a bağlantı xətası: " + netErr.message);
+    }
     if(!res.ok){
       let msg = "Arxa plan silinmə xətası (" + res.status + ")";
       try{ const j = await res.json(); if(j.errors && j.errors[0]) msg = j.errors[0].title || msg; }catch(e){}
@@ -4333,12 +5811,23 @@
   }
 
   async function uploadToImgbb(fileOrBlob){
+    if(!IMGBB_KEY){ throw new Error("Imgbb API açarı yüklənməyib — şirkət hesabında #Imgbb bölməsi yoxdur və ya sessiya köhnədir. Çıxış edib yenidən şirkət girişi edin."); }
     const base64 = await blobToBase64(fileOrBlob);
     const formData = new FormData();
     formData.append("image", base64);
-    const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method:"POST", body: formData });
-    const json = await res.json();
-    if(!json || !json.success) throw new Error("imgbb yükləmə xətası");
+    let res;
+    try{
+      res = await fetchWithTimeout(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method:"POST", body: formData }, 20000, 1);
+    }catch(netErr){
+      throw new Error("Imgbb-ə bağlantı xətası: " + netErr.message + " (Tənzimləmələr → API açarları bölməsindən Imgbb açarınızı yoxlaya bilərsiniz)");
+    }
+    let json;
+    try{ json = await res.json(); }catch(e){ json = null; }
+    if(!res.ok || !json || !json.success){
+      const apiMsg = json && json.error && json.error.message ? json.error.message : `HTTP ${res.status}`;
+      console.error("Imgbb upload failed:", json);
+      throw new Error("Imgbb yükləmə xətası: " + apiMsg);
+    }
     return json.data.url;
   }
 
@@ -4369,20 +5858,25 @@
         cari_id: currentCari.id,
         brand: $("#pBrand").value.trim(),
         name: name,
-        quantity: 0,
+        quantity: parseFloat($("#pStock").value) || 0,
         barcode: $("#pBarcode").value.trim() || null,
         purchase_price: parseFloat($("#pBuy").value)||0,
         sale_price: parseFloat($("#pSell").value)||0,
+        unit: selectedProductUnit,
         image_url: imageUrl || null
       };
       const { error } = await sb.from("products").insert(payload);
-      if(error) throw new Error(error.message);
+      if(error){
+        console.error("Supabase products insert error:", error);
+        throw new Error("Supabase (products): " + error.message);
+      }
 
       toast("Məhsul əlavə olundu", "ok");
       closeModal("productModal");
       openCariProducts(currentCari.id);
       loadSalesProducts();
     } catch(err){
+      console.error("saveProductBtn error:", err);
       toast(err.message || "Xəta baş verdi", "err");
     } finally {
       btn.disabled = false;
@@ -4394,6 +5888,68 @@
   async function loadSettingsView(){
     renderPinDisplay();
     await loadSettingsEmployees();
+    renderApiKeySection();
+  }
+
+  let apiKeysRevealed = false;
+
+  function maskKey(val){
+    if(!val) return "";
+    if(val.length <= 8) return "•".repeat(val.length);
+    return val.slice(0, 4) + "•".repeat(Math.max(4, val.length - 8)) + val.slice(-4);
+  }
+
+  function renderApiKeySection(){
+    const box = $("#apiKeyList");
+    if(!box) return;
+    if(!currentIsAdmin){
+      box.innerHTML = `<div class="api-key-note">Bu bölməni yalnız admin görə bilər.</div>`;
+      return;
+    }
+    const rows = [
+      { label: "Supabase URL", value: SUPABASE_URL || "" },
+      { label: "Supabase Key", value: SUPABASE_KEY || "" },
+      { label: "Imgbb API", value: IMGBB_KEY || "" },
+      { label: "RemoveBg API", value: BG_REMOVER_KEY || "" }
+    ];
+    box.innerHTML = rows.map((r, i)=>{
+      const has = !!r.value;
+      const shown = apiKeysRevealed && has ? r.value : (has ? maskKey(r.value) : "—");
+      return `
+        <div class="api-key-row" data-idx="${i}">
+          <span class="api-key-row-label">${r.label}</span>
+          <span class="api-key-row-val" data-full="${has ? encodeURIComponent(r.value) : ""}">${shown}</span>
+          <div class="api-key-row-btns">
+            <button type="button" class="api-key-btn api-key-copy-btn" title="Kopyala" ${has?"":"disabled"}>
+              <svg viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+          </div>
+        </div>`;
+    }).join("") + `
+      <button type="button" class="btn btn-ghost btn-sm" id="apiKeyToggleAllBtn" style="align-self:flex-start;margin-top:2px;">
+        <svg viewBox="0 0 24 24" fill="none" style="width:14px;height:14px;"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span>${apiKeysRevealed ? "Gizlət" : "Göstər"}</span>
+      </button>
+      <div class="api-key-note">Bu açarlar GitHub-dakı hesab faylından (Accounts) yüklənir. "ERR_CONNECTION_TIMED_OUT" xətası görürsənsə, adətən bu, imgbb.com və ya GitHub raw serverinə internet/şəbəkə bağlantısının kəsilməsi ilə bağlıdır — açarların özü ilə əlaqəli deyil.</div>
+    `;
+    $("#apiKeyToggleAllBtn")?.addEventListener("click", ()=>{
+      apiKeysRevealed = !apiKeysRevealed;
+      renderApiKeySection();
+    });
+    $$(".api-key-copy-btn").forEach(btn=>{
+      btn.addEventListener("click", async (e)=>{
+        const row = e.target.closest(".api-key-row");
+        const valEl = row.querySelector(".api-key-row-val");
+        const full = decodeURIComponent(valEl.dataset.full || "");
+        if(!full) return;
+        try{
+          await navigator.clipboard.writeText(full);
+          toast("Kopyalandı", "ok");
+        }catch(e){
+          toast("Kopyalama alınmadı", "err");
+        }
+      });
+    });
   }
 
   function renderPinDisplay(){
@@ -4628,6 +6184,345 @@
     loadSettingsEmployees();
   });
 
+  /* =========================================================
+     MÜŞTƏRİLƏR — Veresiyə sistemi
+  ========================================================= */
+  function custIconSvg(){
+    return '<svg viewBox="0 0 24 24" fill="none"><circle cx="9.8" cy="8.2" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M16 19v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.6A3.6 3.6 0 0 0 4 17.4V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function debtIconSvg(){
+    return '<svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  }
+  function paymentIconSvg(){
+    return '<svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function custFullName(c){
+    return ((c && c.name) ? c.name : "" ) + " " + ((c && c.surname) ? c.surname : "");
+  }
+
+  async function loadCustomersView(){
+    const grid = $("#customerGrid");
+    grid.innerHTML = `<div class="empty-state"><div class="spin light"></div><b>Yüklənir...</b><span>Müştərilər Supabase-dən gətirilir</span></div>`;
+    const { data, error } = await sb.from("customers").select("*").order("created_at",{ascending:false});
+    if(error){
+      grid.innerHTML = `<div class="empty-state">${iconSvg()}<b>Müştərilər yüklənmədi</b><span>${escapeHtml(error.message)}. Supabase-də "customers" cədvəlinin yaradıldığından əmin olun.</span></div>`;
+      toast("Supabase xətası: " + error.message, "err");
+      customers = [];
+      return;
+    }
+    customers = data || [];
+    renderCustomerGrid();
+  }
+
+  // Ödəniş ekranındakı "Borc" tabı üçün — səhifə tam açılmasa belə müştəri siyahısını gətirir
+  async function ensureCustomersLoaded(force){
+    if(customers.length > 0 && !force) return;
+    try{
+      const { data, error } = await sb.from("customers").select("*").order("created_at",{ascending:false});
+      if(!error) customers = data || [];
+    }catch(e){ /* "customers" cədvəli hələ yoxdursa səssizcə keç */ }
+  }
+
+  function renderCustomerGrid(){
+    const grid = $("#customerGrid");
+    if(customers.length === 0){
+      grid.innerHTML = `<div class="empty-state">
+        ${custIconSvg()}
+        <b>Hələ müştəri yoxdur</b><span>"Müştəri əlavə et" düyməsi ilə ilk müştərini yaradın.</span>
+      </div>`;
+      return;
+    }
+    const q = customerSearchQuery.trim().toLocaleLowerCase("az");
+    let list = customers.filter(c=>{
+      if(!q) return true;
+      return custFullName(c).toLocaleLowerCase("az").includes(q) || (c.phone||"").toLocaleLowerCase("az").includes(q);
+    });
+    if(customerSortDir === "desc") list = list.slice().sort((a,b)=> (Number(b.debt)||0) - (Number(a.debt)||0));
+    else if(customerSortDir === "asc") list = list.slice().sort((a,b)=> (Number(a.debt)||0) - (Number(b.debt)||0));
+
+    if(list.length === 0){
+      grid.innerHTML = `<div class="empty-state">
+        ${custIconSvg()}
+        <b>Nəticə tapılmadı</b><span>Axtarışa uyğun müştəri yoxdur.</span>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = list.map(c=>{
+      const initials = (((c.name||"?").trim().charAt(0)) + ((c.surname||"").trim().charAt(0))).toUpperCase() || "?";
+      const debt = Number(c.debt) || 0;
+      return `
+      <div class="cust-card" data-id="${c.id}">
+        <button type="button" class="cu-del" data-del-cust="${c.id}" title="Sil"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        <div class="cu-avatar">${escapeHtml(initials)}</div>
+        <div class="cu-info">
+          <div class="cu-name">${escapeHtml(custFullName(c).trim())}</div>
+          <div class="cu-phone">${c.phone ? escapeHtml(c.phone) : "Nömrə yoxdur"}</div>
+        </div>
+        <div class="cu-debt ${debt > 0.004 ? "has-debt" : ""}">${fmt(debt)}<span class="cu-debt-lbl">borc</span></div>
+      </div>`;
+    }).join("");
+
+    $$(".cust-card[data-id]", grid).forEach(card=>{
+      card.addEventListener("click", (e)=>{
+        if(e.target.closest("[data-del-cust]")) return;
+        const id = parseInt(card.dataset.id);
+        const c = customers.find(x=>x.id===id);
+        if(c) openCustomerDetail(c);
+      });
+    });
+    $$("[data-del-cust]", grid).forEach(btn=>{
+      btn.addEventListener("click", async (e)=>{
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.delCust);
+        const c = customers.find(x=>x.id===id);
+        if(!confirm(`"${c ? custFullName(c).trim() : ""}" müştərisini silmək istəyirsiniz?`)) return;
+        const { error } = await sb.from("customers").delete().eq("id", id);
+        if(error){ toast("Silinmədi: " + error.message, "err"); return; }
+        toast("Müştəri silindi", "ok");
+        loadCustomersView();
+      });
+    });
+  }
+
+  $("#customerSearchInput").addEventListener("input", e=>{
+    customerSearchQuery = e.target.value;
+    renderCustomerGrid();
+  });
+  $$("#customerSortGroup .cust-sort-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      customerSortDir = btn.dataset.sort;
+      $$("#customerSortGroup .cust-sort-btn").forEach(b=> b.classList.toggle("active", b===btn));
+      renderCustomerGrid();
+    });
+  });
+
+  $("#addCustomerBtn").addEventListener("click", ()=>{
+    $("#customerModalTitle").textContent = "Yeni müştəri";
+    $("#customerNameInput").value = "";
+    $("#customerSurnameInput").value = "";
+    $("#customerPhoneInput").value = "";
+    openModal("customerModal");
+    setTimeout(()=> $("#customerNameInput").focus(), 50);
+  });
+
+  $("#saveCustomerBtn").addEventListener("click", async ()=>{
+    const name = $("#customerNameInput").value.trim();
+    const surname = $("#customerSurnameInput").value.trim();
+    const phone = $("#customerPhoneInput").value.trim();
+    if(!name || !surname){ toast("Ad və soyadı daxil edin", "err"); return; }
+    const btn = $("#saveCustomerBtn");
+    const oldHtml = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<div class="spin"></div>';
+    const { error } = await sb.from("customers").insert({ name, surname, phone: phone || null, debt: 0 });
+    btn.disabled = false; btn.innerHTML = oldHtml;
+    if(error){ toast("Müştəri əlavə olunmadı: " + error.message, "err"); return; }
+    toast("Müştəri əlavə olundu", "ok");
+    closeModal("customerModal");
+    loadCustomersView();
+  });
+
+  /* ---------------- MÜŞTƏRİ DETAL EKRANI ---------------- */
+  async function openCustomerDetail(c){
+    currentCustomer = c;
+    goToView("customer-detail");
+    const initials = (((c.name||"?").trim().charAt(0)) + ((c.surname||"").trim().charAt(0))).toUpperCase() || "?";
+    $("#custDetailAvatar").textContent = initials;
+    $("#custDetailName").textContent = custFullName(c).trim();
+    $("#custDetailPhone").textContent = c.phone ? c.phone : "Nömrə qeyd olunmayıb";
+    const debt = Number(c.debt) || 0;
+    $("#custDetailDebt").textContent = fmt(debt);
+    $("#custDetailDebt").classList.toggle("zero", debt <= 0.004);
+
+    $("#custTxnList").innerHTML = `<div class="empty-state"><div class="spin light"></div><b>Yüklənir...</b><span>Əməliyyatlar gətirilir</span></div>`;
+    const { data, error } = await sb.from("customer_transactions").select("*").eq("customer_id", c.id).order("created_at",{ascending:false});
+    if(error){
+      $("#custTxnList").innerHTML = `<div class="empty-state">${iconSvg()}<b>Tarixçə yüklənmədi</b><span>${escapeHtml(error.message)}</span></div>`;
+      customerTxns = [];
+      return;
+    }
+    customerTxns = data || [];
+    renderCustomerTxns();
+  }
+
+  function renderCustomerTxns(){
+    const wrap = $("#custTxnList");
+    if(customerTxns.length === 0){
+      wrap.innerHTML = `<div class="empty-state">${iconSvg()}<b>Hələ əməliyyat yoxdur</b><span>Bu müştəri üçün borc yazılışı və ya ödəniş edilməyib.</span></div>`;
+      return;
+    }
+    wrap.innerHTML = customerTxns.map(t=>{
+      const isPayment = t.type === "payment";
+      const dt = new Date(t.created_at);
+      const dateStr = dt.toLocaleString("az-AZ", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+      const label = isPayment ? "Borc ödənişi" : (t.sale_id ? "Satışdan borc" : "Borc yazıldı");
+      return `
+      <div class="cust-txn-row ${isPayment ? "is-payment" : ""}">
+        <div class="cust-txn-icon">${isPayment ? paymentIconSvg() : debtIconSvg()}</div>
+        <div class="cust-txn-info">
+          <div class="cust-txn-label">${escapeHtml(label)}${t.note ? " · " + escapeHtml(t.note) : ""}</div>
+          <div class="cust-txn-meta">${dateStr}</div>
+        </div>
+        <div class="cust-txn-amt">${isPayment ? "-" : "+"}${fmt(Number(t.amount)||0)}</div>
+        ${t.sale_id ? `<button type="button" class="cust-txn-receipt" data-sale-id="${t.sale_id}" title="Qəbzi göstər"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h12v17.2a.7.7 0 0 1-1.06.6L15 19.3l-1.94 1.5a.7.7 0 0 1-.86 0L10.26 19.3 8.06 20.8a.7.7 0 0 1-1.06-.6V3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>` : ""}
+      </div>`;
+    }).join("");
+
+    $$(".cust-txn-receipt", wrap).forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const saleId = parseInt(btn.dataset.saleId);
+        const cached = onlineSales.find(s=>s.id===saleId);
+        if(cached){ openSaleReceipt(cached); return; }
+        const { data, error } = await sb.from("sales").select("*").eq("id", saleId).maybeSingle();
+        if(error || !data){ toast("Qəbz tapılmadı", "err"); return; }
+        openSaleReceipt(data);
+      });
+    });
+  }
+
+  $("#customerBackBtn").addEventListener("click", ()=>{
+    goToView("customers");
+    loadCustomersView();
+  });
+
+  $("#custWriteDebtBtn").addEventListener("click", ()=>{
+    if(!currentCustomer) return;
+    custTxnMode = "debt";
+    $("#custTxnModalTitle").textContent = "Borc yaz";
+    $("#custTxnAmountInput").value = "0";
+    $("#custTxnNoteInput").value = "";
+    openModal("custTxnModal");
+    setTimeout(()=> $("#custTxnAmountInput").focus(), 50);
+  });
+
+  $("#custPayDebtBtn").addEventListener("click", ()=>{
+    if(!currentCustomer) return;
+    custTxnMode = "payment";
+    $("#custTxnModalTitle").textContent = "Borcu ödə";
+    $("#custTxnAmountInput").value = "0";
+    $("#custTxnNoteInput").value = "";
+    openModal("custTxnModal");
+    setTimeout(()=> $("#custTxnAmountInput").focus(), 50);
+  });
+
+  $("#custTxnAmountInput").addEventListener("input", e=>{
+    e.target.value = e.target.value.replace(/[^0-9.]/g,"");
+  });
+
+  $("#saveCustTxnBtn").addEventListener("click", async ()=>{
+    if(!currentCustomer) return;
+    const amt = round2(parseFloat($("#custTxnAmountInput").value || "0"));
+    if(isNaN(amt) || amt <= 0){ toast("Düzgün məbləğ daxil edin", "err"); return; }
+    const note = $("#custTxnNoteInput").value.trim();
+    const curDebt = Number(currentCustomer.debt) || 0;
+    const newDebt = custTxnMode === "debt" ? round2(curDebt + amt) : Math.max(0, round2(curDebt - amt));
+
+    const btn = $("#saveCustTxnBtn");
+    const oldHtml = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<div class="spin"></div>';
+
+    const { error: updErr } = await sb.from("customers").update({ debt: newDebt }).eq("id", currentCustomer.id);
+    if(updErr){
+      btn.disabled = false; btn.innerHTML = oldHtml;
+      toast("Yenilənmədi: " + updErr.message, "err");
+      return;
+    }
+    try{
+      await sb.from("customer_transactions").insert({
+        customer_id: currentCustomer.id,
+        type: custTxnMode,
+        amount: amt,
+        note: note || null,
+        sale_id: null
+      });
+    }catch(e){ /* tarixçə yazıla bilmədi */ }
+
+    btn.disabled = false; btn.innerHTML = oldHtml;
+    toast(custTxnMode === "debt" ? "Borc yazıldı" : "Ödəniş qeyd olundu", "ok");
+    closeModal("custTxnModal");
+
+    currentCustomer.debt = newDebt;
+    const cRef = customers.find(x=>x.id===currentCustomer.id);
+    if(cRef) cRef.debt = newDebt;
+
+    openCustomerDetail(currentCustomer);
+  });
+
+  /* ---------------- ÖDƏNİŞ EKRANI: "Borc" tabı üçün müştəri seçimi ---------------- */
+  function pvCustomerChipHtml(c){
+    const initials = (((c.name||"?").trim().charAt(0)) + ((c.surname||"").trim().charAt(0))).toUpperCase() || "?";
+    return `
+      <div class="pv-customer-chip">
+        <div class="pcc-avatar">${escapeHtml(initials)}</div>
+        <div class="pcc-info">
+          <div class="pcc-name">${escapeHtml(custFullName(c).trim())}</div>
+          <div class="pcc-debt">Cari borc: ${fmt(Number(c.debt)||0)}</div>
+        </div>
+        <button type="button" class="pcc-change" id="pvCustomerChangeBtn">Dəyiş</button>
+      </div>`;
+  }
+
+  function renderPvCustomerBox(){
+    const chosenArea = $("#pvCustomerChosenArea");
+    const searchArea = $("#pvCustomerSearchArea");
+    if(!chosenArea || !searchArea) return;
+    if(pvSelectedCustomer){
+      chosenArea.innerHTML = pvCustomerChipHtml(pvSelectedCustomer);
+      searchArea.classList.add("hidden");
+      const changeBtn = $("#pvCustomerChangeBtn");
+      if(changeBtn){
+        changeBtn.addEventListener("click", ()=>{
+          searchArea.classList.remove("hidden");
+          $("#pvCustomerSearchInput").value = "";
+          renderPvCustomerSearchList("");
+          setTimeout(()=> $("#pvCustomerSearchInput").focus(), 30);
+        });
+      }
+    } else {
+      chosenArea.innerHTML = `
+        <button type="button" class="pv-customer-pick" id="pvCustomerPickLbl">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="9.8" cy="8.2" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M16 19v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.6A3.6 3.6 0 0 0 4 17.4V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Müştəri seçin
+        </button>`;
+      searchArea.classList.remove("hidden");
+      renderPvCustomerSearchList($("#pvCustomerSearchInput") ? $("#pvCustomerSearchInput").value : "");
+    }
+  }
+
+  function renderPvCustomerSearchList(query){
+    const listEl = $("#pvCustomerSearchList");
+    if(!listEl) return;
+    const q = (query||"").trim().toLocaleLowerCase("az");
+    let list = customers;
+    if(q) list = list.filter(c=> custFullName(c).toLocaleLowerCase("az").includes(q) || (c.phone||"").toLocaleLowerCase("az").includes(q));
+    list = list.slice(0, 20);
+    if(list.length === 0){
+      listEl.innerHTML = `<div class="muted-sub" style="padding:8px 2px;">${customers.length === 0 ? "Hələ müştəri yoxdur" : "Nəticə tapılmadı"}</div>`;
+      return;
+    }
+    listEl.innerHTML = list.map(c=>{
+      const initials = (((c.name||"?").trim().charAt(0)) + ((c.surname||"").trim().charAt(0))).toUpperCase() || "?";
+      return `<button type="button" class="pv-cust-opt" data-id="${c.id}">
+        <div class="pco-avatar">${escapeHtml(initials)}</div>
+        <div class="pco-name">${escapeHtml(custFullName(c).trim())}</div>
+        <div class="pco-debt">${fmt(Number(c.debt)||0)}</div>
+      </button>`;
+    }).join("");
+    $$(".pv-cust-opt", listEl).forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = parseInt(btn.dataset.id);
+        const c = customers.find(x=>x.id===id);
+        if(!c) return;
+        pvSelectedCustomer = c;
+        const cur = parseFloat($("#amountInput").value || "0");
+        if(!cur) $("#amountInput").value = String(paymentState.remaining);
+        renderPvCustomerBox();
+      });
+    });
+  }
+
+  $("#pvCustomerSearchInput").addEventListener("input", e=> renderPvCustomerSearchList(e.target.value));
+
   /* ---------------- MODAL SYSTEM ---------------- */
   const modalOverlay = $("#modalOverlay");
   function openModal(id){
@@ -4638,23 +6533,53 @@
     modalOverlay.classList.remove("show");
     $("#"+id).classList.remove("show");
   }
+  function closeAnyOpenModal(){
+    if(typeof stopBarcodeScanner === "function") stopBarcodeScanner();
+    // Barkod skaneri arxada gizlədilmiş başqa modal(lar)ı örtürdüsə, ləğv edəndə
+    // hər şeyi bağlamaq əvəzinə arxadakı modalı geri qaytarırıq.
+    if(typeof hiddenBehindScanner !== "undefined" && hiddenBehindScanner && hiddenBehindScanner.length){
+      $("#barcodeScanModal").classList.remove("show");
+      hiddenBehindScanner.forEach(m => m.classList.add("show"));
+      hiddenBehindScanner = null;
+      modalOverlay.classList.add("show");
+      return;
+    }
+    $$(".modal-box.show").forEach(m=> m.classList.remove("show"));
+    modalOverlay.classList.remove("show");
+  }
   $$("[data-close]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      $$(".modal-box.show").forEach(m=> m.classList.remove("show"));
-      modalOverlay.classList.remove("show");
-    });
+    btn.addEventListener("click", closeAnyOpenModal);
   });
   modalOverlay.addEventListener("click", (e)=>{
-    if(e.target === modalOverlay){
-      $$(".modal-box.show").forEach(m=> m.classList.remove("show"));
-      modalOverlay.classList.remove("show");
-    }
+    if(e.target === modalOverlay) closeAnyOpenModal();
   });
 
   /* ---------------- SAVED SESSION ---------------- */
   // Admin sessiyası birbaşa bərpa olunur; işçi sessiyası isə cari (yəni admin
   // tərəfindən sonradan dəyişdirilə bilən) icazələri təzədən Supabase-dən çəkir.
   (async function trySavedSession(){
+    // 1) Əvvəlcə hansı şirkətə daxil olunduğunu bərpa et (Supabase/Imgbb/RemoveBg
+    //    konfiqurasiyasını GitHub raw hesablar faylından təzədən çəkir).
+    try{
+      const rawCompany = localStorage.getItem(COMPANY_KEY);
+      if(rawCompany){
+        const cdata = JSON.parse(rawCompany);
+        if(cdata && cdata.login){
+          const accounts = await fetchAccounts();
+          const acc = accounts.find(a => a.login.toLowerCase() === cdata.login.toLowerCase());
+          if(acc){
+            applyCompany(acc);
+            showUserLoginStep();
+          } else {
+            localStorage.removeItem(COMPANY_KEY);
+          }
+        }
+      }
+    }catch(e){ /* internet yoxdursa şirkət girişi ekranında qalır */ }
+
+    if(!sb) return; // şirkət hələ seçilməyib — istifadəçi sessiyası yoxlanıla bilməz
+
+    // 2) Sonra istifadəçi (admin/işçi) sessiyasını bərpa et.
     try{
       const raw = localStorage.getItem(SESSION_KEY);
       if(!raw) return;
